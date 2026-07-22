@@ -54,8 +54,15 @@ class KVPressLocalModelConfig:
     decoding_compression_interval: Optional[int] = None
     decoding_target_size: Optional[int] = None
     max_new_tokens: int = 512
+    do_sample: bool = False
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
     device: Optional[str] = None
-    action_regex: str = r"```mswea_bash_command\s*\n(.*?)\n```"
+    # Accept both the harness-specific ```mswea_bash_command fence and a plain ```bash fence:
+    # smaller local models often revert to the far more common ```bash convention they saw
+    # everywhere in training instead of this harness's custom label. The (?:...) is a
+    # non-capturing group, so re.findall still returns exactly the one command capture group.
+    action_regex: str = r"```(?:mswea_bash_command|bash)\s*\n(.*?)\n```"
     format_error_template: str = (
         "Please always provide EXACTLY ONE action in triple backticks, found {{actions|length}} actions."
     )
@@ -128,27 +135,54 @@ class KVPressLocalModel:
         return PrefillDecodingPress(prefilling_press=prefill_press, decoding_press=decode_press)
 
     @torch.no_grad()
-    def _generate(self, messages: list[dict]) -> tuple[str, int, int]:
-        """Returns (completion_text, prompt_length, cache_seq_length_after_generation)."""
+    def _generate(self, messages: list[dict]) -> tuple[str, int, int, str]:
+        """Returns (completion_text, prompt_length, cache_seq_length_after_generation, finish_reason).
+
+        Sampling params mirror litellm's model_kwargs passthrough: with do_sample=False
+        (default) the model decodes greedily and deterministically -- fine for measurement,
+        but a model that falls into a repetition rut can never escape it. Set do_sample=True
+        (optionally with temperature/top_p) to allow the model to break out, matching the
+        randomness a hosted API uses by default.
+        """
         clean_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
         text = self.tokenizer.apply_chat_template(clean_messages, add_generation_prompt=True, tokenize=False)
         prompt_ids = self.tokenizer.encode(text, return_tensors="pt", add_special_tokens=False).to(self.device)
         prompt_length = prompt_ids.shape[1]
 
+        gen_kwargs: dict[str, Any] = {
+            "max_new_tokens": self.config.max_new_tokens,
+            "do_sample": self.config.do_sample,
+        }
+        if self.config.do_sample:
+            # Only pass these when sampling, otherwise transformers warns they're ignored.
+            if self.config.temperature is not None:
+                gen_kwargs["temperature"] = self.config.temperature
+            if self.config.top_p is not None:
+                gen_kwargs["top_p"] = self.config.top_p
+
         press = self._build_press(prompt_length)
         cache = DynamicCache()
         with press(self.model):
-            outputs = self.model.generate(
-                input_ids=prompt_ids,
-                past_key_values=cache,
-                max_new_tokens=self.config.max_new_tokens,
-                do_sample=False,
-            )
+            outputs = self.model.generate(input_ids=prompt_ids, past_key_values=cache, **gen_kwargs)
         cache_seq_length = cache.get_seq_length()
-        completion_text = self.tokenizer.decode(outputs[0, prompt_length:], skip_special_tokens=True)
-        return completion_text, prompt_length, cache_seq_length
 
-    def _log_turn(self, messages: list[dict], completion_text: str, prompt_length: int, cache_seq_length: int):
+        generated_ids = outputs[0, prompt_length:]
+        completion_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+
+        # Match litellm's real finish_reason instead of hardcoding "stop": if generation ran
+        # out the token budget without emitting EOS, report "length" so the format-error
+        # template can tell the model it was cut off rather than give a generic complaint.
+        eos_ids = self.model.generation_config.eos_token_id
+        if isinstance(eos_ids, int):
+            eos_ids = [eos_ids]
+        last_is_eos = len(generated_ids) > 0 and eos_ids is not None and generated_ids[-1].item() in eos_ids
+        finish_reason = "length" if (len(generated_ids) >= self.config.max_new_tokens and not last_is_eos) else "stop"
+
+        return completion_text, prompt_length, cache_seq_length, finish_reason
+
+    def _log_turn(
+        self, messages: list[dict], completion_text: str, prompt_length: int, cache_seq_length: int, finish_reason: str
+    ):
         if not self.config.log_path:
             return
         record = {
@@ -161,6 +195,7 @@ class KVPressLocalModel:
             "completion": completion_text,
             "prompt_length": prompt_length,
             "cache_seq_length": cache_seq_length,
+            "finish_reason": finish_reason,
             "timestamp": time.time(),
         }
         with open(self.config.log_path, "a") as f:
@@ -172,8 +207,8 @@ class KVPressLocalModel:
         from minisweagent.models import GLOBAL_MODEL_STATS
         from minisweagent.models.utils.actions_text import parse_regex_actions
 
-        completion_text, prompt_length, cache_seq_length = self._generate(messages)
-        self._log_turn(messages, completion_text, prompt_length, cache_seq_length)
+        completion_text, prompt_length, cache_seq_length, finish_reason = self._generate(messages)
+        self._log_turn(messages, completion_text, prompt_length, cache_seq_length, finish_reason)
 
         GLOBAL_MODEL_STATS.add(self.config.cost_per_call)
         self._cost += self.config.cost_per_call
@@ -183,7 +218,7 @@ class KVPressLocalModel:
                 completion_text,
                 action_regex=self.config.action_regex,
                 format_error_template=self.config.format_error_template,
-                template_kwargs={"finish_reason": "stop"},
+                template_kwargs={"finish_reason": finish_reason},
             )
         except FormatError as e:
             # Contract (see litellm_model.py): all query() implementations must persist

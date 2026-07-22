@@ -2,67 +2,180 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Post-hoc predictive-entropy / KL-divergence analysis comparing full attention
-against StreamingLLM KV cache eviction, across a dataset of tasks.
+Measure how StreamingLLM KV-cache eviction distorts a model's next-token / sequence
+predictions, comparing FULL attention against COMPRESSED attention (each user
+compression ratio) across a dataset of tasks.
 
-Both regimes are teacher-forced on the *same* reference continuation (a gold
-answer if the dataset provides one, otherwise greedily generated under full
-attention), so the per-position output distributions are directly comparable:
+Two axes:
 
-    p_full(.  | prefix_t)    vs    p_stream(.  | prefix_t)
+- `regime` -- how uncertainty is measured: `teacher_forced` or `sampled`.
+- `kv_caching` -- the cache under test: `full` (no eviction) or `compressed` (a
+  StreamingLLM ratio). Every run scores `full` plus each user ratio; ratio 0.0 is
+  skipped since it is identical to `full`.
 
-Per (task, position) we compute predictive entropy H_full / H_stream (bits),
-delta_H = H_stream - H_full, KL(p_full || p_stream), and the cross-entropy of
-the reference token under each regime. Pooling these over many tasks gives a
-dataset-level estimate of the (chain-rule/teacher-forced) conditional entropy
-H(O | M) for each cache regime M, and the "information lost to eviction":
+================================  regime = teacher_forced  ========================
+Both kv_caching configs are teacher-forced on the *same* reference continuation
+O = (o_1..o_T) (the gold answer if the dataset provides one, else greedily generated
+under full attention). Because both see the same prefix at every position t, the two
+next-token distributions p_full(.|o_<t, x) and p_compressed(.|o_<t, x) are directly
+comparable. Per (task, position t), in bits:
 
-    delta_I = H(O | M_stream) - H(O | M_full) >= 0
+  * h_full      = -sum_v p_full(v) log2 p_full(v)                 predictive entropy, full
+  * h_compressed= -sum_v p_comp(v) log2 p_comp(v)                 predictive entropy, compressed
+  * delta_h     = h_compressed - h_full                           extra uncertainty from eviction
+  * kl          = sum_v p_full(v) log2( p_full(v)/p_comp(v) )     distribution shift
+  * ce_full     = -log2 p_full(o_t)                               surprisal of the gold token, full
+  * ce_compressed= -log2 p_comp(o_t)                              surprisal of the gold token, compressed
+  * excess_ce   = ce_compressed - ce_full                         extra bits to predict gold (quality drop)
 
-This is *not* a full mutual information I(O; M) in the strict sense (that
-would require a joint distribution over O and a random cache M, plus an
-unconditioned H(O) baseline we never estimate). What is estimated here is the
-standard, tractable proxy: how many extra bits, on average, the model needs to
-predict the true continuation once the cache has been degraded from full to
-StreamingLLM. Equivalently, excess_ce = mean(ce_stream) - mean(ce_full) is an
-(approximate) estimator of the same quantity via CE(p_full, p_stream) =
-H(p_full) + KL(p_full || p_stream).
+There is no benchmark accuracy here: teacher-forcing never generates an answer, so its
+quality metric is `excess_ce` (how much harder the gold answer is to predict once the
+cache is evicted). Dataset-level pooling gives H(O|M) per config and delta_I = H(O|M_comp)
+- H(O|M_full) >= 0, the "information lost to eviction".
+
+==================================  regime = sampled  =============================
+No shared reference: each kv_caching config free-generates. Per (task, config), draw
+N = n_mc_samples continuations y^(i) ~ p(.|x) at temperature 1.0 (no top-k/top-p, so the
+plug-in estimate is unbiased), and additionally greedy-decode ONE answer to score:
+
+  * H_bits      = (1/N) sum_i [ -log2 p(y^(i)|x) ]                sequence entropy H(Y|x)
+  * se_bits     = sqrt( varentropy / N ),  varentropy = Var_i(-log2 p(y^(i)))
+  * confidence  = exp( -H_hat_nats / mean_length ) in (0,1]       per-token geo-mean prob = 1/perplexity
+  * primary_score = dataset's benchmark metric of the greedy answer vs gold, in [0,1]
+                    (e.g. token-F1 for hotpotqa; ROUGE/BLEU/METEOR/BERTScore for loogle)
+                    -- computed by evaluation/benchmarks/<dataset>/calculate_metrics.py,
+                    never re-implemented here.
+  * error       = 1 - primary_score
+  * correct     = 1[ primary_score >= ece_threshold ]
+  * accuracy    = mean_task(correct);  ECE = sum_b (n_b/N)|acc_b - conf_b|  (confidence vs accuracy)
+
+===================================  outputs (both regimes)  ======================
+Each run writes two CSVs into the output dir:
+
+  * comparison.csv  -- one row per (task, ratio): full vs compressed side by side
+      teacher_forced: h_full, h_compressed, delta_h, kl, ce_full, ce_compressed, excess_ce
+      sampled:        H_full_bits, H_compressed_bits, delta_H_bits, confidence_full/compressed,
+                      score_full/compressed, delta_score
+  * per_config.csv  -- one row per (task, kv_caching, ratio)  [ratio = NA for full]
+      teacher_forced: h_mean_bits, ce_mean_bits
+      sampled:        H_bits, se_bits, confidence, predicted_answer, gold, primary_score, correct
+
+plus a dataset-level summary.csv and diagnostic plots.
 
 Usage
 -----
-# Single ad hoc task
-python entropy_analysis.py --context "..." --question "..." --answer "..."
+# 1) teacher-forced, prefill-only eviction
+OUT=./results/entropy_analysis/llma32_1b/longbench/hotpotqa/tf_prefill
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model unsloth/Llama-3.2-1B-Instruct \
+    --teacher_forcing True \
+    --dataset longbench --data_dir hotpotqa --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.75]" \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
 
-# Loop over a real dataset (default: simonjegou/loogle, shortdep_qa split)
-python entropy_analysis.py \
-    --dataset simonjegou/loogle --dataset_config shortdep_qa \
-    --n_samples 20 --compression_ratios "[0.0, 0.25, 0.5, 0.75]"
+# 2) teacher-forced, decode-time eviction
+OUT=./results/entropy_analysis/llma32_1b/longbench/hotpotqa/tf_decode
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model unsloth/Llama-3.2-1B-Instruct \
+    --teacher_forcing True \
+    --dataset longbench --data_dir hotpotqa --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.75]" --decoding_compression_interval 4 \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
 
-# Loop over a local JSONL file with "context"/"question"/"answer" fields
-python entropy_analysis.py --dataset_path ./my_tasks.jsonl
+
+# 3) sampled, prefill-only eviction
+OUT=./results/entropy_analysis/llma32_1b/longbench/hotpotqa/sampled_prefill
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model unsloth/Llama-3.2-1B-Instruct \
+    --teacher_forcing False \
+    --dataset longbench --data_dir hotpotqa --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.75]" \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 4) sampled, decode-time eviction
+OUT=./results/entropy_analysis/llma32_1b/longbench/hotpotqa/sampled_decode
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model unsloth/Llama-3.2-1B-Instruct \
+    --teacher_forcing False \
+    --dataset longbench --data_dir hotpotqa --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.75]" --decoding_compression_interval 4 \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# ad-hoc single task, or a local JSONL with context/question/answer fields
+nohup .venv/bin/python evaluation/entropy_analysis.py --context "..." --question "..." --answer "..."
+python evaluation/entropy_analysis.py --dataset_path ./my_tasks.jsonl
 """
 
+import contextlib
 import itertools
 import json
 import logging
+import subprocess
+import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from fire import Fire
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache, PreTrainedModel, PreTrainedTokenizer
 
+from evaluate_registry import DATASET_REGISTRY, SCORER_REGISTRY
+
+from entropy_metrics import (
+    SampledOutput,
+    TeacherForcedOutput,
+    compute_ece,
+    compute_sequence_metrics,
+    plugin_entropy_estimate,
+    sequence_confidence,
+)
+from entropy_plots import (
+    plot_accuracy_vs_ratio,
+    plot_cache_composition,
+    plot_dataset_summary,
+    plot_entropy_vs_error,
+    plot_position_traces,
+    plot_reliability,
+)
 from kvpress import DecodingPress, PrefillDecodingPress, StreamingLLMPress
 from kvpress.presses.base_press import BasePress
 
 logger = logging.getLogger(__name__)
 
-LOG2 = torch.log(torch.tensor(2.0)).item()
+METRIC_COLUMNS = ["h_full", "h_compressed", "delta_h", "kl_full_compressed", "ce_full", "ce_compressed"]
 
-METRIC_COLUMNS = ["h_full", "h_stream", "delta_h", "kl_full_stream", "ce_full", "ce_stream"]
+# Gold-answer column per DATASET_REGISTRY entry: unlike context/question (uniformly
+# named across every benchmark's HF push), the gold-answer column isn't standardized.
+# Each benchmark's own calculate_metrics.py reads it under its own name. Verified
+# directly against each dataset's schema; needle_in_haystack has no gold-answer column
+# at all, so its tasks always fall back to a generated reference.
+ANSWER_FIELD_REGISTRY = {
+    "loogle": "answer",
+    "ruler": "answer",
+    "zero_scrolls": "answer",
+    "infinitebench": "answer",
+    "longbench": "answers",
+    "longbench-e": "answers",
+    "longbench-v2": "answer",
+    "needle_in_haystack": None,
+    "aime25": "answer",
+    "math500": "answer",
+}
 
 
 @dataclass
@@ -71,14 +184,13 @@ class Task:
     context: str
     question: str
     answer: Optional[str] = None
+    # Original dataset row minus context/question, kept so the benchmark scorers in
+    # SCORER_REGISTRY can read whatever answer/answers/task/all_classes/... columns
+    # they need at scoring time. None for ad-hoc --context/--question tasks.
+    raw: Optional[dict] = None
 
 
-@dataclass
-class RegimeOutput:
-    """Per-position teacher-forced quantities for one attention regime."""
-
-    log_probs: torch.Tensor  # (ref_len, vocab), natural-log probabilities, float32
-    cache_seq_length: int  # number of KV entries retained after prefill
+# TeacherForcedOutput, SampledOutput and EntropyEstimate now live in entropy_metrics.
 
 
 def load_model_and_tokenizer(model_name: str, device: Optional[str] = None):
@@ -98,18 +210,18 @@ def load_model_and_tokenizer(model_name: str, device: Optional[str] = None):
 
 def load_tasks(
     dataset: Optional[str],
-    dataset_config: Optional[str],
+    data_dir: Optional[str],
     dataset_split: str,
     dataset_path: Optional[str],
-    context_field: str,
-    question_field: str,
-    answer_field: str,
     n_samples: int,
 ) -> list[Task]:
     """
     Load a list of tasks either from a local JSONL/CSV file (`dataset_path`) or
-    from a Hugging Face Hub dataset (`dataset`, streamed so only `n_samples`
-    examples are downloaded).
+    from a registered benchmark dataset (`dataset`, a DATASET_REGISTRY key, e.g. 
+    `--dataset longbench --data_dir hotpotqa`). Streamed so only `n_samples` examples are
+    downloaded. Every registered benchmark's HF push uses "context"/"question"
+    for these two fields; the gold-answer column varies and is resolved via
+    `ANSWER_FIELD_REGISTRY`.
     """
     if dataset_path is not None:
         path = Path(dataset_path)
@@ -118,20 +230,24 @@ def load_tasks(
                 rows = [json.loads(line) for line in itertools.islice(f, n_samples)]
         else:
             rows = pd.read_csv(path).head(n_samples).to_dict("records")
+        answer_field = "answer"
     else:
         from datasets import load_dataset
 
-        ds = load_dataset(dataset, dataset_config, split=dataset_split, streaming=True)
+        assert dataset in DATASET_REGISTRY, f"'{dataset}' not in DATASET_REGISTRY: {list(DATASET_REGISTRY)}"
+        ds = load_dataset(DATASET_REGISTRY[dataset], data_dir=data_dir, split=dataset_split, streaming=True)
         rows = list(itertools.islice(ds, n_samples))
+        answer_field = ANSWER_FIELD_REGISTRY.get(dataset)
 
     tasks = []
     for i, row in enumerate(rows):
-        answer = row.get(answer_field)
+        answer = row.get(answer_field) if answer_field is not None else None
         if isinstance(answer, list):
             answer = answer[0] if answer else None
-        tasks.append(
-            Task(task_id=str(i), context=row[context_field], question=row[question_field], answer=answer)
-        )
+        # Keep every original column except the two large text fields so the benchmark
+        # scorers can later read the answer/task/all_classes/... columns they expect.
+        raw = {k: v for k, v in row.items() if k not in ("context", "question")}
+        tasks.append(Task(task_id=str(i), context=row["context"], question=row["question"], answer=answer, raw=raw))
     return tasks
 
 
@@ -183,14 +299,27 @@ def get_reference_ids(
 
 
 @torch.no_grad()
-def run_regime(
+def run_teacher_forced_task(
     model: PreTrainedModel,
     prompt_ids: torch.Tensor,
     reference_ids: torch.Tensor,
     press: Optional[BasePress],
     decode_per_token: bool = False,
-) -> RegimeOutput:
+) -> TeacherForcedOutput:
     """
+    args:
+        model: PreTrainedModel, the LM to run
+        prompt_ids: (1, prompt_len) tensor of token ids to prefill the cache with
+        reference_ids: (1, ref_len) tensor of token ids to teacher-force after prefill
+        press: optional BasePress to apply during prefill (and optionally decoding)
+        decode_per_token: 
+                if True, the reference is scored one token at a time under `press` 
+                (for decode-time eviction to be exercised); 
+                if False, the reference is scored in one batched forward call after 
+                prefill (faster but implies that decode-time eviction is not exercised)
+    outputs:
+        TeacherForcedOutput with per-position log-probabilities and the cache length after prefill
+
     Prefill `prompt_ids` (optionally compressing the KV cache with `press`), then
     teacher-force `reference_ids` and return per-position log-probabilities.
 
@@ -199,7 +328,7 @@ def run_regime(
     length: pruned tokens keep the RoPE position they were encoded with, so the
     query positions must be numbered as if no eviction had happened.
 
-    If `decode_per_token` is False (the default), the reference is scored in one
+    If `decode_per_token` is False (default), the reference is scored in one
     batched forward call after `press` has already been removed. This is fine for
     a prefill-only press: it only ever prunes once, before this call happens, so
     batching vs. looping token-by-token makes no numerical difference, and batching
@@ -218,9 +347,13 @@ def run_regime(
     cache = DynamicCache()
 
     def prefill():
+        # Prefill the cache with the prompt
+        # Meaning: it runs the model backbone on the prompt and stores the Key-Value pairs for each prompt token in the cache.
+        # If press is not None, it will also prune the cache according to the press's eviction policy.
         model.model(input_ids=prompt_ids, past_key_values=cache)
 
     if press is not None and decode_per_token:
+        # press(model) is a context manager that wraps the model's forward pass to apply the press's eviction policy.
         with press(model):
             prefill()
             log_probs_rows = []
@@ -246,50 +379,155 @@ def run_regime(
         outputs = model(input_ids=reference_ids, past_key_values=cache, position_ids=position_ids)
         log_probs = torch.log_softmax(outputs.logits[0].float(), dim=-1)
 
-    return RegimeOutput(log_probs=log_probs, cache_seq_length=cache_seq_length)
+    return TeacherForcedOutput(log_probs=log_probs, cache_seq_length=cache_seq_length)
 
 
-def entropy_bits(log_probs: torch.Tensor) -> torch.Tensor:
-    """Shannon entropy per row, in bits. log_probs: (seq_len, vocab) natural log."""
-    probs = log_probs.exp()
-    return -(probs * log_probs).sum(dim=-1) / LOG2
+@torch.no_grad()
+def run_sampled_task(
+    model: PreTrainedModel,
+    prompt_ids: torch.Tensor,
+    press: Optional[BasePress],
+    n_samples: int,
+    max_new_tokens: int,
+    eos_token_id: int,
+) -> SampledOutput:
+    """
+    args:
+        model: PreTrainedModel, the LM to run
+        prompt_ids: (1, prompt_len) tensor of token ids to prefill the cache with
+        press: optional BasePress to apply during prefill (and optionally decoding)
+        n_samples: number of continuations to sample from p(. | prompt_ids)
+        max_new_tokens: maximum number of tokens to generate per sample
+        eos_token_id: token id of the EOS token, used to stop sampling early
+    outputs:
+        SampledOutput with per-sample surprisal, generated lengths, and the cache length after prefill
+
+    Plug-in Monte Carlo estimator of sequence-level entropy:
+
+        H(Y | x) = E_{y ~ p(.|x)} [ -log p(y | x) ]
+        H_hat    = (1/N) * sum_i [ -log p(y^(i) | x) ],   y^(i) ~ p(.|x)
+
+    Draws `n_samples` continuations from p(. | prompt_ids) by explicit ancestral
+    sampling at temperature 1.0 -- no top-k/top-p/repetition penalty, since any of
+    those would sample from a distorted distribution and bias the estimate -- under
+    `press`'s cache-eviction policy.
+
+    `press` is kept active through prefill *and* the whole sampling loop (unlike
+    `run_teacher_forced_task`'s batched branch), mirroring `run_teacher_forced_task`'s decode_per_token branch:
+    since sampling is inherently sequential (each token depends on the last), there
+    is no batched fast path here, so a press that also evicts during decoding always
+    gets the chance to affect later samples.
+
+    Position ids continue from `prompt_ids.shape[1]` for the same reason as in
+    `run_teacher_forced_task`: pruned tokens keep the RoPE position they were encoded with, so
+    generated tokens must be numbered as if no eviction had happened.
+    """
+    device = model.device
+    prompt_length = prompt_ids.shape[1]
+    prompt = prompt_ids.expand(n_samples, -1).contiguous()
+    cache = DynamicCache()
+
+    with press(model) if press is not None else contextlib.nullcontext():
+        # logits_to_keep=1: the LM head would otherwise project every prompt
+        # position to vocab-size logits for the whole n_samples batch, even
+        # though only the last position's logits are ever used below.
+        outputs = model(input_ids=prompt, past_key_values=cache, logits_to_keep=1)
+        cache_seq_length = cache.get_seq_length()
+        next_logits = outputs.logits[:, -1, :]
+
+        seq_logp = torch.zeros(n_samples, device=device)
+        lengths = torch.zeros(n_samples, dtype=torch.long, device=device)
+        active = torch.ones(n_samples, dtype=torch.bool, device=device)
+
+        for i in range(max_new_tokens):
+            log_probs = torch.log_softmax(next_logits.float(), dim=-1)
+            next_token = torch.multinomial(log_probs.exp(), num_samples=1).squeeze(-1)
+            step_logp = log_probs.gather(1, next_token.unsqueeze(1)).squeeze(1)
+
+            # Only accumulate for samples still active at the start of this step;
+            # the step that emits EOS is counted (p(EOS | ...) is part of p(y)).
+            seq_logp = seq_logp + step_logp * active.float()
+            lengths = lengths + active.long()
+            active = active & (next_token != eos_token_id)
+            if not active.any():
+                break
+
+            position_ids = torch.full((n_samples, 1), prompt_length + i, device=device, dtype=torch.long)
+            outputs = model(input_ids=next_token.unsqueeze(1), past_key_values=cache, position_ids=position_ids)
+            next_logits = outputs.logits[:, -1, :]
+
+    return SampledOutput(surprisal=-seq_logp, lengths=lengths, cache_seq_length=cache_seq_length)
 
 
-def kl_bits(log_p: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
-    """KL(p || q) per row, in bits."""
-    p = log_p.exp()
-    return (p * (log_p - log_q)).sum(dim=-1) / LOG2
+@torch.no_grad()
+def greedy_generate_output(
+    model: PreTrainedModel,
+    prompt_ids: torch.Tensor,
+    press: Optional[BasePress],
+    max_new_tokens: int,
+    eos_token_id: int,
+) -> torch.Tensor:
+    """
+    args:
+        model: PreTrainedModel, the LM to run
+        prompt_ids: (1, prompt_len) tensor of token ids to prefill the cache with
+        press: optional BasePress to apply during prefill (and optionally decoding)
+        max_new_tokens: maximum number of tokens to generate
+        eos_token_id: token id of the EOS token, used to stop generation early
+    outputs:
+        (gen_len,) tensor of generated token ids, excluding the prompt
+
+    Greedily decode one continuation under `press`, returning the generated token ids.
+
+    This is the answer that gets scored against the gold answer. Greedy rather than sampled: 
+    it is the model's single canonical answer, so the accuracy number isn't itself a random draw. 
+    The *uncertainty* paired with it still comes from `run_sampled_task`'s temperature-1.0 
+    Monte Carlo estimate of H(Y | x).
+
+    Structure mirrors `run_sampled_task` exactly -- press active through prefill *and* the
+    decode loop (so decode-time eviction can fire and affect later tokens), and explicit
+    `position_ids = prompt_length + i` so pruned tokens keep the RoPE positions they were
+    encoded with. Only the token choice differs: argmax instead of `torch.multinomial`.
+    """
+    device = model.device
+    prompt_length = prompt_ids.shape[1]
+    cache = DynamicCache()
+    tokens: list[int] = []
+
+    with press(model) if press is not None else contextlib.nullcontext():
+        outputs = model(input_ids=prompt_ids, past_key_values=cache, logits_to_keep=1)
+        next_logits = outputs.logits[:, -1, :]
+
+        for i in range(max_new_tokens):
+            next_token = next_logits.argmax(dim=-1)  # (1,)
+            if next_token.item() == eos_token_id:
+                break
+            tokens.append(int(next_token.item()))
+
+            position_ids = torch.full((1, 1), prompt_length + i, device=device, dtype=torch.long)
+            outputs = model(input_ids=next_token.unsqueeze(1), past_key_values=cache, position_ids=position_ids)
+            next_logits = outputs.logits[:, -1, :]
+
+    return torch.tensor(tokens, dtype=torch.long)
 
 
-def cross_entropy_bits(log_probs: torch.Tensor, token_ids: torch.Tensor) -> torch.Tensor:
-    """-log p(token) per position, in bits."""
-    return -log_probs.gather(1, token_ids.unsqueeze(1)).squeeze(1) / LOG2
-
-
-def compute_metrics(full: RegimeOutput, stream: RegimeOutput, reference_ids: torch.Tensor) -> pd.DataFrame:
-    ref = reference_ids[0].to(full.log_probs.device)
-    h_full = entropy_bits(full.log_probs)
-    h_stream = entropy_bits(stream.log_probs)
-    return pd.DataFrame(
-        {
-            "position": range(len(ref)),
-            "h_full": h_full.tolist(),
-            "h_stream": h_stream.tolist(),
-            "delta_h": (h_stream - h_full).tolist(),
-            "kl_full_stream": kl_bits(full.log_probs, stream.log_probs).tolist(),
-            "ce_full": cross_entropy_bits(full.log_probs, ref).tolist(),
-            "ce_stream": cross_entropy_bits(stream.log_probs, ref).tolist(),
-        }
-    )
-
-
-def build_stream_press(
+def build_compressed_press(
     ratio: float, n_sink: int, prompt_length: int, decoding_compression_interval: Optional[int],
     decoding_target_size: Optional[int],
 ) -> tuple[BasePress, bool]:
     """
-    Build the press used for the "stream" regime, and whether it needs the
-    per-token decode loop in `run_regime` to actually exercise decode-time eviction.
+    args: 
+        ratio: compression ratio for StreamingLLMPress (0.0 = no eviction, 1.0 = max eviction)
+        n_sink: number of sink tokens for StreamingLLMPress
+        prompt_length: length of the prompt (used to compute decoding_target_size if not provided)
+        decoding_compression_interval: if set, apply a DecodingPress every this many decode steps
+        decoding_target_size: if set, target size for DecodingPress; if None, computed from prompt_length and ratio
+    outputs:
+        BasePress to use for the "compressed" Task, and a boolean indicating whether decode-time eviction is exercised 
+        (i.e., whether `run_teacher_forced_task` should loop per token)
+
+    Build the press used for the "compressed" Task, and whether it needs the
+    per-token decode loop in `run_teacher_forced_task` to actually exercise decode-time eviction.
 
     If `decoding_compression_interval` is None, this is the original prefill-only
     behaviour: a bare StreamingLLMPress, pruned once during prefill and never again.
@@ -319,7 +557,7 @@ def build_stream_press(
     return PrefillDecodingPress(prefilling_press=prefill_press, decoding_press=decode_press), True
 
 
-def process_task(
+def process_teacher_forced_task(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizer,
     task: Task,
@@ -331,6 +569,14 @@ def process_task(
     decoding_compression_interval: Optional[int] = None,
     decoding_target_size: Optional[int] = None,
 ) -> Optional[pd.DataFrame]:
+    """
+    Teacher-forced regime. Scores the reference continuation (gold if available, else
+    generated under full attention) under full attention and each compression ratio,
+    both seeing the same prefix at every position, and returns per-position
+    entropy / KL / cross-entropy. One row per (task, ratio, position); the `full` vs
+    `compressed` columns (h_full/h_compressed, ce_full/ce_compressed, ...) come paired from
+    `compute_sequence_metrics`. Ratio 0.0 is skipped (identical to full).
+    """
     prompt_ids = build_prompt_ids(tokenizer, task.context, task.question, model.device, max_context_length)
     reference_ids, ref_source = get_reference_ids(
         model, tokenizer, prompt_ids, task.answer, max_new_tokens, max_reference_tokens
@@ -344,25 +590,123 @@ def process_task(
         f"ref_source={ref_source}"
     )
 
-    full = run_regime(model, prompt_ids, reference_ids, press=None)
+    full = run_teacher_forced_task(model, prompt_ids, reference_ids, press=None)
 
     records = []
     for ratio in compression_ratios:
-        press, decode_per_token = build_stream_press(
+        if ratio == 0.0:  # identical to full attention; skip
+            continue
+        press, decode_per_token = build_compressed_press(
             ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
         )
-        stream = run_regime(model, prompt_ids, reference_ids, press=press, decode_per_token=decode_per_token)
-        df = compute_metrics(full, stream, reference_ids)
+        compressed = run_teacher_forced_task(model, prompt_ids, reference_ids, press=press, decode_per_token=decode_per_token)
+        df = compute_sequence_metrics(full, compressed, reference_ids)
         df.insert(0, "ratio", ratio)
         df.insert(0, "task_id", task.task_id)
         df["cache_seq_length_full"] = full.cache_seq_length
-        df["cache_seq_length_stream"] = stream.cache_seq_length
+        df["cache_seq_length_compressed"] = compressed.cache_seq_length
         records.append(df)
 
-    return pd.concat(records, ignore_index=True)
+    return pd.concat(records, ignore_index=True) if records else None
 
 
-def aggregate(records: pd.DataFrame) -> pd.DataFrame:
+def process_task_sampled(
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizer,
+    task: Task,
+    compression_ratios: list[float],
+    n_sink: int,
+    n_mc_samples: int,
+    max_new_tokens: int,
+    max_context_length: Optional[int],
+    decoding_compression_interval: Optional[int] = None,
+    decoding_target_size: Optional[int] = None,
+) -> pd.DataFrame:
+    """
+    Sampled regime. For each KV-caching config -- `full` attention plus every user
+    compression ratio (0.0 skipped, == full) -- this does two passes over the prompt:
+    `run_sampled_task` (n_mc_samples draws -> sequence entropy H(Y|x) and a confidence)
+    and `greedy_generate_output` (one deterministic answer, scored against gold later,
+    in `main`, by the dataset's benchmark scorer).
+
+    Returns the long `per_config` layout: one row per (task, kv_caching, ratio). `full`
+    is `kv_caching="full", ratio=NaN`; each compressed config is `kv_caching="compressed",
+    ratio=r`. `config_label` ("full" / "compressed@r") is a convenience key for grouping
+    and per-config plots.
+    """
+    prompt_ids = build_prompt_ids(tokenizer, task.context, task.question, model.device, max_context_length)
+    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else model.config.eos_token_id
+    gold = task.answer or ""
+
+    logger.info(
+        f"task {task.task_id}: prompt_len={prompt_ids.shape[1]} n_mc_samples={n_mc_samples} "
+        f"gold_len={len(gold)} chars"
+    )
+
+    def config_row(kv_caching: str, config_label: str, ratio: float, press: Optional[BasePress]) -> dict:
+        estimate = plugin_entropy_estimate(
+            run_sampled_task(model, prompt_ids, press, n_mc_samples, max_new_tokens, eos_token_id)
+        )
+        generated_ids = greedy_generate_output(model, prompt_ids, press, max_new_tokens, eos_token_id)
+        predicted_answer = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+        return {
+            "regime": "sampled",
+            "task_id": task.task_id,
+            "kv_caching": kv_caching,
+            "ratio": ratio,
+            "config_label": config_label,
+            "n_mc_samples": n_mc_samples,
+            "H_bits": estimate.H_hat,
+            "se_bits": estimate.se,
+            "varentropy_bits": estimate.varentropy,
+            "mean_length": estimate.mean_length,
+            "confidence": sequence_confidence(estimate),
+            "greedy_length": int(generated_ids.numel()),
+            "cache_seq_length": estimate.cache_seq_length,
+            "gold": gold,
+            "predicted_answer": predicted_answer,
+        }
+
+    rows = [config_row("full", "full", float("nan"), None)]
+    for ratio in compression_ratios:
+        if ratio == 0.0:  # identical to full attention; skip
+            continue
+        press, _ = build_compressed_press(
+            ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
+        )
+        rows.append(config_row("compressed", f"compressed@{ratio}", ratio, press))
+
+    return pd.DataFrame.from_records(rows)
+
+
+def build_sampled_comparison(per_config: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pair `full` against each `compressed` config into one comparison row per (task, ratio):
+    full vs compressed entropy, confidence, and benchmark score side by side.
+    """
+    full = per_config[per_config["kv_caching"] == "full"].set_index("task_id")
+    rows = []
+    for _, c in per_config[per_config["kv_caching"] == "compressed"].iterrows():
+        f = full.loc[c["task_id"]]
+        rows.append(
+            {
+                "regime": "sampled",
+                "task_id": c["task_id"],
+                "ratio": c["ratio"],
+                "H_full_bits": f["H_bits"],
+                "H_compressed_bits": c["H_bits"],
+                "delta_H_bits": c["H_bits"] - f["H_bits"],
+                "confidence_full": f["confidence"],
+                "confidence_compressed": c["confidence"],
+                "score_full": f.get("primary_score", float("nan")),
+                "score_compressed": c.get("primary_score", float("nan")),
+                "delta_score": c.get("primary_score", float("nan")) - f.get("primary_score", float("nan")),
+            }
+        )
+    return pd.DataFrame.from_records(rows)
+
+
+def aggregate_teacher_forced_task_metrics(records: pd.DataFrame) -> pd.DataFrame:
     """
     Dataset-level H(O | M) estimate per compression ratio.
 
@@ -374,124 +718,302 @@ def aggregate(records: pd.DataFrame) -> pd.DataFrame:
     summary = per_task.groupby("ratio")[METRIC_COLUMNS].agg(["mean", "std"])
     summary.columns = ["_".join(c) for c in summary.columns]
     summary = summary.reset_index()
-    summary["excess_ce_bits"] = summary["ce_stream_mean"] - summary["ce_full_mean"]
+    summary["excess_ce_bits"] = summary["ce_compressed_mean"] - summary["ce_full_mean"]
     summary["n_tasks"] = per_task.groupby("ratio").size().values
     return summary.rename(
         columns={
             "h_full_mean": "H_full_bits_per_token",
-            "h_stream_mean": "H_stream_bits_per_token",
+            "h_compressed_mean": "H_compressed_bits_per_token",
             "delta_h_mean": "delta_I_loss_bits",
-            "kl_full_stream_mean": "mean_kl_bits",
+            "kl_full_compressed_mean": "mean_kl_bits",
         }
     )
 
 
-def plot_dataset_summary(per_task: pd.DataFrame, summary: pd.DataFrame, output_dir: Path) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-
-    axes[0].errorbar(
-        summary["ratio"], summary["delta_I_loss_bits"], yerr=summary["delta_h_std"], marker="o", capsize=3
-    )
-    axes[0].axhline(0, color="black", linewidth=0.5)
-    axes[0].set_xlabel("StreamingLLM compression ratio")
-    axes[0].set_ylabel("ΔI_loss = H(O|M_stream) - H(O|M_full) (bits/token)")
-    axes[0].set_title("Information lost to eviction (mean ± std over tasks)")
-
-    axes[1].errorbar(
-        summary["ratio"], summary["mean_kl_bits"], yerr=summary["kl_full_stream_std"], marker="o", capsize=3
-    )
-    axes[1].set_xlabel("StreamingLLM compression ratio")
-    axes[1].set_ylabel("KL(p_full || p_stream) (bits/token)")
-    axes[1].set_title("Distribution shift (mean ± std over tasks)")
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "distortion_vs_compression_ratio.png", dpi=150)
-    plt.close(fig)
-
-    ratios = sorted(per_task["ratio"].unique())
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.boxplot(
-        [per_task.loc[per_task["ratio"] == r, "kl_full_stream"] for r in ratios],
-        tick_labels=[str(r) for r in ratios],
-    )
-    ax.set_xlabel("StreamingLLM compression ratio")
-    ax.set_ylabel("per-task mean KL (bits/token)")
-    ax.set_title("Spread of distortion across tasks")
-    fig.tight_layout()
-    fig.savefig(output_dir / "kl_spread_across_tasks.png", dpi=150)
-    plt.close(fig)
-
-
-def plot_position_traces(records: pd.DataFrame, ratio: float, output_dir: Path) -> None:
+def build_tf_comparison(per_position: pd.DataFrame) -> pd.DataFrame:
     """
-    ΔH_t and KL_t against position t in the reference sequence, one line per task.
-
-    Note: with KVPress, StreamingLLMPress only prunes the cache once during
-    prefill (compression is skipped once generation starts, see BasePress).
-    So the sink/eviction boundary is fixed *inside the context* before any of
-    these positions are reached -- it does not move along this t axis. See
-    `plot_cache_composition` for where the boundary actually falls.
+    Collapse the teacher-forced per-position records to one comparison row per (task, ratio):
+    full vs compressed metrics averaged over positions, plus excess_ce. (The internal
+    per-position columns still use the historical `*_compressed` names -> `*_compressed` here.)
     """
-    subset = records[records["ratio"] == ratio]
-    if subset.empty:
-        return
-
-    fig, axes = plt.subplots(2, 1, figsize=(9, 8), sharex=True)
-    for _, group in subset.groupby("task_id"):
-        group = group.sort_values("position")
-        axes[0].plot(group["position"], group["delta_h"], alpha=0.5, linewidth=1)
-        axes[1].plot(group["position"], group["kl_full_stream"], alpha=0.5, linewidth=1)
-
-    axes[0].axhline(0, color="black", linewidth=0.5)
-    axes[0].set_ylabel("ΔH = H_stream - H_full (bits)")
-    axes[1].set_ylabel("KL(p_full || p_stream) (bits)")
-    axes[1].set_xlabel("position in reference sequence (t)")
-    n_tasks = subset["task_id"].nunique()
-    fig.suptitle(
-        f"compression_ratio={ratio}  (n={n_tasks} tasks, one line per task)\n"
-        "cache is pruned once during prefill and fixed thereafter -- see cache_composition plot for the boundary",
-        fontsize=10,
-    )
-    fig.tight_layout()
-    fig.savefig(output_dir / f"per_position_traces_ratio_{ratio}.png", dpi=150)
-    plt.close(fig)
-
-
-def plot_cache_composition(records: pd.DataFrame, ratio: float, n_sink: int, output_dir: Path, max_tasks: int = 40) -> None:
-    """
-    Where the StreamingLLM sink/eviction boundary falls inside the *original context*
-    for each task: sink tokens (always kept), the evicted middle span, and the
-    recent window (kept). This is the boundary "position" -- it lives on the
-    context axis, not on the reference-sequence axis used by `plot_position_traces`.
-    """
-    subset = records[records["ratio"] == ratio].drop_duplicates("task_id").sort_values("task_id").head(max_tasks)
-    if subset.empty:
-        return
-
-    fig, ax = plt.subplots(figsize=(9, 0.3 * len(subset) + 1.5))
-    for i, row in enumerate(subset.itertuples()):
-        prompt_length = row.cache_seq_length_full
-        n_kept = row.cache_seq_length_stream
-        n_pruned = prompt_length - n_kept
-        sink_end = min(n_sink, prompt_length)
-        evicted_end = sink_end + n_pruned
-
-        ax.barh(i, sink_end, color="tab:green", label="sink (kept)" if i == 0 else None)
-        ax.barh(i, evicted_end - sink_end, left=sink_end, color="lightgray", label="evicted" if i == 0 else None)
-        ax.barh(
-            i, prompt_length - evicted_end, left=evicted_end, color="tab:blue",
-            label="recent window (kept)" if i == 0 else None,
+    agg = (
+        per_position.groupby(["task_id", "ratio"])
+        .agg(
+            h_full=("h_full", "mean"),
+            h_compressed=("h_compressed", "mean"),
+            delta_h=("delta_h", "mean"),
+            kl=("kl_full_compressed", "mean"),
+            ce_full=("ce_full", "mean"),
+            ce_compressed=("ce_compressed", "mean"),
         )
+        .reset_index()
+    )
+    agg["excess_ce"] = agg["ce_compressed"] - agg["ce_full"]
+    agg.insert(0, "regime", "teacher_forced")
+    return agg
 
-    ax.set_yticks(range(len(subset)))
-    ax.set_yticklabels(subset["task_id"])
-    ax.set_xlabel("position in original context")
-    ax.set_ylabel("task_id")
-    ax.set_title(f"StreamingLLM cache composition at compression_ratio={ratio} (n_sink={n_sink})")
-    ax.legend(loc="upper right")
-    fig.tight_layout()
-    fig.savefig(output_dir / f"cache_composition_ratio_{ratio}.png", dpi=150)
-    plt.close(fig)
+
+def build_tf_per_config(per_position: pd.DataFrame) -> pd.DataFrame:
+    """
+    Teacher-forced `per_config` layout: one row per (task, kv_caching, ratio), with mean
+    predictive entropy per token and mean surprisal of the gold reference. `full` (computed
+    once per task) is one row with ratio=NaN; each compressed ratio adds a row.
+    """
+    compressed = (
+        per_position.groupby(["task_id", "ratio"])
+        .agg(h_mean_bits=("h_compressed", "mean"), ce_mean_bits=("ce_compressed", "mean"))
+        .reset_index()
+    )
+    compressed["kv_caching"] = "compressed"
+    full = (
+        per_position.groupby("task_id")
+        .agg(h_mean_bits=("h_full", "mean"), ce_mean_bits=("ce_full", "mean"))
+        .reset_index()
+    )
+    full["kv_caching"] = "full"
+    full["ratio"] = float("nan")
+    out = pd.concat([full, compressed], ignore_index=True)
+    out.insert(0, "regime", "teacher_forced")
+    return out[["regime", "task_id", "kv_caching", "ratio", "h_mean_bits", "ce_mean_bits"]]
+
+
+# --------------------------------------------------------------------------------------
+# Benchmark-backed accuracy scoring
+#
+# All accuracy numbers come from each dataset's own scorer in evaluation/benchmarks/*
+# (via SCORER_REGISTRY). Two shapes are needed:
+#   - aggregate, per (Task, ratio) group -> the benchmark's dataset-level
+#     metric(s), the same numbers evaluate.py reports;
+#   - per-example, one scalar in [0, 1] -> drives the ECE / entropy-vs-error calibration.
+# The scorers return wildly different shapes (scalar, {task: {...}}, bucketed dict,
+# list-of-dicts, {}), so `flatten_metrics` normalises them and `PRIMARY_METRIC` names
+# the single key used as "the" accuracy per dataset. loogle is special-cased because its
+# scorer always runs BERTScore (too slow per example), so its per-example path reuses the
+# loogle BLEU/ROUGE/METEOR helpers directly and skips BERT.
+# --------------------------------------------------------------------------------------
+
+# Metric key (post-flatten) used as the calibration accuracy per dataset. None => the
+# benchmark exposes no usable per-example score, so calibration is skipped.
+PRIMARY_METRIC = {
+    "loogle": "rouge-1",
+    "ruler": "string_match",
+    "zero_scrolls": None,
+    "infinitebench": "score",
+    "longbench": "score",
+    "longbench-e": "score",
+    "longbench-v2": "average",
+    "needle_in_haystack": "rouge-l",
+    "aime25": "accuracy",
+    "math500": "accuracy",
+}
+
+# Scorers that report on a 0-100 percentage scale; their per-example score is divided by
+# 100 so the calibration threshold and the confidence axis both live in [0, 1].
+PERCENT_SCALE = {"longbench", "longbench-e", "ruler", "infinitebench"}
+
+
+def _clean(value) -> str:
+    return value if isinstance(value, str) and value.strip() else "<NONE>"
+
+
+def _mean(xs) -> float:
+    xs = [x for x in xs if x == x]  # drop NaN
+    return sum(xs) / len(xs) if xs else float("nan")
+
+
+def _leaf(value) -> float:
+    """Reduce one metric value to a float: rouge {r,p,f} -> f; any other dict -> mean."""
+    if isinstance(value, dict):
+        if "f" in value:
+            return float(value["f"])
+        nums = [_leaf(v) for v in value.values()]
+        return _mean(nums)
+    return float(value)
+
+
+def flatten_metrics(obj) -> dict:
+    """Normalise a benchmark scorer's return (scalar / {task:{...}} / dict / list) to a flat dict."""
+    if isinstance(obj, (int, float)):
+        return {"score": float(obj)}
+    if isinstance(obj, list):  # e.g. needle: list of per-row rouge dicts
+        if not obj:
+            return {}
+        keys = obj[0].keys()
+        return {k: _mean([_leaf(d[k]) for d in obj if k in d]) for k in keys}
+    if isinstance(obj, dict):
+        if obj and all(isinstance(v, dict) for v in obj.values()):  # {task: metrics}
+            metric_keys = set().union(*(set(v.keys()) for v in obj.values()))
+            return {k: _mean([_leaf(v[k]) for v in obj.values() if k in v]) for k in metric_keys}
+        return {k: _leaf(v) for k, v in obj.items()}
+    return {}
+
+
+def _loogle_per_row(df: pd.DataFrame) -> list[dict]:
+    """Per-row BLEU/ROUGE/METEOR (no BERT) by reusing the loogle benchmark's own scorers."""
+    import nltk
+    from benchmarks.loogle.calculate_metrics import (
+        get_bleu_score,
+        get_meteor_score,
+        get_rouge_score,
+        try_except_metric,
+    )
+
+    nltk.download("wordnet", quiet=True)
+    nltk.download("omw-1.4", quiet=True)
+    metric_fns = [try_except_metric(fn) for fn in (get_bleu_score, get_rouge_score, get_meteor_score)]
+    rows = []
+    for gold, pred in zip(df["gold"], df["predicted_answer"]):
+        row: dict = {}
+        for fn in metric_fns:
+            row.update(fn(_clean(gold), _clean(pred)))
+        rows.append(row)
+    return rows
+
+
+def _loogle_aggregate(df: pd.DataFrame, compute_bertscore: bool) -> dict:
+    """loogle group metrics reusing its scorers: BLEU/ROUGE/METEOR means (+ batched BERT-F1)."""
+    per_row = _loogle_per_row(df)
+    if not per_row:
+        return {}
+    out = {k: _mean([r[k] for r in per_row]) for k in per_row[0]}
+    if compute_bertscore:
+        from bert_score import score
+
+        golds = [_clean(v) for v in df["gold"]]
+        preds = [_clean(v) for v in df["predicted_answer"]]
+        out["bert"] = float(score(preds, golds, lang="EN")[2].mean().item())
+    return out
+
+
+def benchmark_metrics_aggregate(group_df: pd.DataFrame, dataset_key: Optional[str], compute_bertscore: bool) -> dict:
+    """Dataset-level metrics for one (Task, ratio) group, straight from the benchmark scorer."""
+    if dataset_key is None:  # local/ad-hoc data: no registered scorer, reuse loogle metrics
+        return _loogle_aggregate(group_df, compute_bertscore)
+    if dataset_key == "loogle":
+        if compute_bertscore:
+            return flatten_metrics(SCORER_REGISTRY["loogle"](group_df.copy()))
+        return _loogle_aggregate(group_df, compute_bertscore=False)
+    return flatten_metrics(SCORER_REGISTRY[dataset_key](group_df.copy()))
+
+
+def benchmark_score_per_example(df: pd.DataFrame, dataset_key: Optional[str]) -> list[float]:
+    """
+    Per-row correctness in [0, 1] for calibration, obtained by reusing the benchmark's own
+    scorer: apply it to one-row DataFrames (each scorer already reduces its input) and pull
+    the dataset's PRIMARY_METRIC. loogle / local data reuse the loogle ROUGE helper instead
+    (its full scorer would run BERTScore per row). Returns NaN where no per-example score is
+    available (e.g. zero_scrolls).
+    """
+    if dataset_key is None:
+        return [r["rouge-1"] for r in _loogle_per_row(df)]
+    primary = PRIMARY_METRIC.get(dataset_key)
+    if primary is None:
+        return [float("nan")] * len(df)
+    if dataset_key == "loogle":
+        return [r["rouge-1"] for r in _loogle_per_row(df)]
+    scorer = SCORER_REGISTRY[dataset_key]
+    scale = 100.0 if dataset_key in PERCENT_SCALE else 1.0
+    scores = []
+    for _, row in df.iterrows():
+        flat = flatten_metrics(scorer(pd.DataFrame([row]).copy()))
+        scores.append(flat.get(primary, float("nan")) / scale)
+    return scores
+
+
+def aggregate_sampled(
+    per_config: pd.DataFrame, dataset_key: Optional[str], compute_bertscore: bool, n_ece_bins: int, ece_bin_strategy: str
+) -> tuple[pd.DataFrame, dict[str, pd.DataFrame], dict[str, float], list[str]]:
+    """
+    Dataset-level sampled summary: one row per kv_caching config (`full`, then each
+    compressed ratio), carrying the benchmark's own metric(s), the fraction of tasks
+    counted correct, the ECE, and mean/std of entropy/confidence across tasks.
+
+    Also returns each config's per-bin calibration table (for the reliability diagram),
+    its ECE (keyed by `config_label`), and the benchmark-metric column names present (for
+    the accuracy-vs-ratio plot; dataset-dependent).
+    """
+    summary_rows = []
+    bin_tables: dict[str, pd.DataFrame] = {}
+    eces: dict[str, float] = {}
+    metric_columns: set[str] = set()
+
+    for label, group in per_config.groupby("config_label", sort=False):
+        ece, bin_table = compute_ece(group["confidence"], group["correct"], n_ece_bins, ece_bin_strategy)
+        bin_tables[label] = bin_table
+        eces[label] = ece
+
+        # The benchmark scorer already aggregates over the group's tasks, so this is one
+        # number per metric per config -- stored as `{metric}_mean` for the plot's sake.
+        benchmark = benchmark_metrics_aggregate(group, dataset_key, compute_bertscore)
+        metric_columns.update(benchmark.keys())
+
+        row = {
+            "regime": "sampled",
+            "config_label": label,
+            "kv_caching": group["kv_caching"].iloc[0],
+            "ratio": group["ratio"].iloc[0],
+            "n_tasks": len(group),
+            "accuracy": group["correct"].mean(),
+            "ece": ece,
+        }
+        for metric, value in benchmark.items():
+            row[f"{metric}_mean"] = value
+        for column in ["primary_score", "H_bits", "confidence", "greedy_length"]:
+            row[f"{column}_mean"] = group[column].mean()
+            row[f"{column}_std"] = group[column].std()
+        summary_rows.append(row)
+
+    return pd.DataFrame(summary_rows), bin_tables, eces, sorted(metric_columns)
+
+
+def write_run_config(out_dir: Path, run_args: dict) -> None:
+    """
+    Dump the exact args `main` was called with -- defaults included, not just the ones
+    passed on the CLI -- plus provenance (full command, git commit, UTC timestamp) to
+    `config.json` in the results folder. This is the record of *how* a run was produced;
+    the directory name only carries the few fields worth browsing by. Reload these across
+    runs to reconstruct or compare a whole sweep.
+    """
+    try:
+        commit = (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=Path(__file__).parent, stderr=subprocess.DEVNULL
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        commit = None
+
+    config = {
+        "args": run_args,
+        "command": "python " + " ".join(sys.argv),
+        "git_commit": commit,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(out_dir / "config.json", "w") as f:
+        json.dump(config, f, indent=2, default=str)
+
+
+def add_folder_log_handler(out_dir: Path, piped_log_name: str = "my_log.log") -> None:
+    """
+    Fallback file log: if the run was NOT piped through `tee "$OUT/<piped_log_name>"`,
+    attach a logging handler that writes <out_dir>/run.log, so a log still lands next to
+    the CSVs. When you DO pipe, `tee` creates that file at launch (before main() runs),
+    so its presence means "already being logged" and we skip the redundant backup. This
+    is an independent logging sink -- it never touches stdout/stderr, so it can't fight
+    `tee`; it also only captures logging-module output, not raw print()/tqdm/library
+    stderr (pipe through `tee` for the full stream).
+
+    Detection is heuristic: it keys off a hardcoded filename and mere existence, so a
+    stale <piped_log_name> left by a PRIOR piped run into the same folder will suppress
+    the backup on a later un-piped run. Delete that file (or the folder) to reset.
+    """
+    if (out_dir / piped_log_name).exists():
+        return  # being piped to tee already; skip the redundant backup log
+    file_handler = logging.FileHandler(out_dir / "run.log")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    logging.getLogger().addHandler(file_handler)
 
 
 def main(
@@ -499,13 +1021,10 @@ def main(
     context: Optional[str] = None,
     question: Optional[str] = None,
     answer: Optional[str] = None,
-    dataset: Optional[str] = "simonjegou/loogle",
-    dataset_config: Optional[str] = "shortdep_qa",
+    dataset: Optional[str] = "loogle",
+    data_dir: Optional[str] = "shortdep_qa",
     dataset_split: str = "test",
     dataset_path: Optional[str] = None,
-    context_field: str = "context",
-    question_field: str = "question",
-    answer_field: str = "answer",
     n_samples: int = 5,
     compression_ratios: str = "[0.0, 0.25, 0.5, 0.75]",
     n_sink: int = 4,
@@ -514,95 +1033,171 @@ def main(
     max_context_length: Optional[int] = 1024,
     decoding_compression_interval: Optional[int] = None,
     decoding_target_size: Optional[int] = None,
+    teacher_forcing: bool = True,
+    n_mc_samples: int = 200,
+    compute_bertscore: bool = True,
+    ece_metric: str = "rouge-1",
+    ece_threshold: float = 0.5,
+    n_ece_bins: int = 5,
+    ece_bin_strategy: str = "quantile",
     device: Optional[str] = None,
     output_dir: str = "./results/entropy_analysis",
     seed: int = 42,
 ):
     """
-    Compare per-position predictive entropy and KL divergence between full
-    attention and StreamingLLM eviction, teacher-forced on a shared reference
-    continuation, across a sweep of compression ratios and a dataset of tasks.
+    Compare full attention against StreamingLLM compression across a sweep of ratios and
+    a dataset of tasks. See the module docstring for the metrics and output CSVs.
 
-    Pass `--context`/`--question` (and optionally `--answer`) to run a single
-    ad hoc task instead of a dataset.
+    `teacher_forcing` picks the regime:
+    - True  -> teacher-forced per-position entropy / KL / cross-entropy (quality metric =
+      excess_ce); no answer is generated, so no benchmark accuracy.
+    - False -> sampled sequence entropy H(Y|x) PLUS benchmark accuracy: each config also
+      greedy-decodes one answer, scored by the dataset's own scorer (SCORER_REGISTRY),
+      with a confidence-vs-accuracy ECE / reliability / entropy-vs-error analysis.
 
-    By default StreamingLLM only prunes once, during prefill (KVPress's normal
-    behaviour). Set `decoding_compression_interval` to also re-apply StreamingLLM's
-    sink+recency rule every N decode steps (pruning back down to
-    `decoding_target_size` tokens, or `(1 - ratio) * prompt_length` if left unset).
-    This switches the reference to being scored one token at a time instead of in
-    one batched call, so decode-time eviction can actually affect later positions.
+    Both regimes always score `full` attention plus every user compression ratio (0.0
+    skipped, == full), and write `comparison.csv` (full vs compressed per task) and
+    `per_config.csv` (one row per kv_caching config). `decoding_compression_interval`
+    additionally re-applies StreamingLLM every N decode steps (decode-time eviction).
+    `ece_metric` is the fallback primary metric for local/ad-hoc data; `compute_bertscore=
+    False` skips loogle's roberta-large download.
     """
+    run_args = dict(locals())  # exact keyword args main() got (incl. defaults); capture before any locals
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     torch.manual_seed(seed)
 
     ratios = eval(compression_ratios) if isinstance(compression_ratios, str) else list(compression_ratios)
     mode_suffix = "decode" if decoding_compression_interval is not None else "prefill"
+    regime_suffix = "tf" if teacher_forcing else "sampled"
     out_dir = Path(output_dir)
-    out_dir = out_dir.with_name(f"{out_dir.name}_{mode_suffix}")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.endswith(f"{regime_suffix}_{mode_suffix}"):
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = out_dir.with_name(f"{out_dir.name}_{regime_suffix}_{mode_suffix}")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    write_run_config(out_dir, run_args)
+    add_folder_log_handler(out_dir)  # fallback log in the results folder; coexists with `tee`
     logger.info(f"Writing results to {out_dir}")
 
     if context is not None and question is not None:
         tasks = [Task(task_id="0", context=context, question=question, answer=answer)]
     else:
-        tasks = load_tasks(
-            dataset, dataset_config, dataset_split, dataset_path, context_field, question_field, answer_field,
-            n_samples,
-        )
+        tasks = load_tasks(dataset, data_dir, dataset_split, dataset_path, n_samples)
     logger.info(f"Loaded {len(tasks)} task(s)")
 
+    # dataset_key indexes SCORER_REGISTRY; None for ad-hoc --context/--question or local
+    # --dataset_path data, which have no registered benchmark scorer.
+    dataset_key = None if (context is not None or dataset_path is not None) else dataset
+    # Raw dataset rows for every task, captured before the resume filter below drops the
+    # already-completed ones, so the benchmark scorers can read their answer/task/... columns.
+    raw_by_id = {task.task_id: (task.raw or {}) for task in tasks}
+
+    # records.csv is the incremental, resumable per-task file (per-config rows for sampled,
+    # per-position rows for teacher-forced); the two headline CSVs are derived from it.
     records_path = out_dir / "records.csv"
-    completed_task_ids: set[str] = set()
     if records_path.exists():
-        completed_task_ids = set(pd.read_csv(records_path, usecols=["task_id"], dtype={"task_id": str})["task_id"])
-        tasks = [task for task in tasks if task.task_id not in completed_task_ids]
-        logger.info(
-            f"Resuming: {len(completed_task_ids)} task(s) already in {records_path.name}, "
-            f"{len(tasks)} remaining to run"
-        )
+        completed = set(pd.read_csv(records_path, usecols=["task_id"], dtype={"task_id": str})["task_id"])
+        tasks = [task for task in tasks if task.task_id not in completed]
+        logger.info(f"Resuming: {len(completed)} task(s) already in {records_path.name}, {len(tasks)} remaining")
 
     model_, tokenizer = load_model_and_tokenizer(model, device)
 
-    for task in tasks:
-        df = process_task(
-            model_, tokenizer, task, ratios, n_sink, max_new_tokens, max_reference_tokens, max_context_length,
-            decoding_compression_interval, decoding_target_size,
-        )
-        if df is not None:
+    if not teacher_forcing:
+        # ---- sampled regime: entropy H(Y|x) + benchmark accuracy + calibration ----
+        for task in tasks:
+            df = process_task_sampled(
+                model_, tokenizer, task, ratios, n_sink, n_mc_samples, max_new_tokens, max_context_length,
+                decoding_compression_interval, decoding_target_size,
+            )
             df.to_csv(records_path, mode="a", header=not records_path.exists(), index=False)
 
-    if not records_path.exists():
-        logger.error("No task produced usable records, aborting.")
+        if not records_path.exists():
+            logger.error("No task produced usable records, aborting.")
+            return
+
+        per_config = pd.read_csv(records_path, dtype={"task_id": str})
+        # Re-attach the benchmark scorers' input columns (answer/answers/task/all_classes/...)
+        # from the in-memory raw rows rather than the CSV, which would have turned any list
+        # column (e.g. longbench "answers") into a string and broken the scorer.
+        raw_df = pd.DataFrame([{"task_id": tid, **raw} for tid, raw in raw_by_id.items()])
+        per_config = per_config.merge(raw_df, on="task_id", how="left")
+
+        # Correctness for the calibration axis is the dataset's own primary metric (via its
+        # benchmark scorer); ece_metric is only the fallback for local/ad-hoc data.
+        primary_metric = PRIMARY_METRIC.get(dataset_key) if dataset_key is not None else ece_metric
+        calibrated = primary_metric is not None
+        per_config["primary_score"] = benchmark_score_per_example(per_config, dataset_key)
+        per_config["error"] = 1.0 - per_config["primary_score"]
+        per_config["correct"] = (per_config["primary_score"] >= ece_threshold).astype(int)
+        per_config.to_csv(out_dir / "per_config.csv", index=False)
+
+        build_sampled_comparison(per_config).to_csv(out_dir / "comparison.csv", index=False)
+
+        summary, bin_tables, eces, metric_columns = aggregate_sampled(
+            per_config, dataset_key, compute_bertscore, n_ece_bins, ece_bin_strategy
+        )
+        summary.to_csv(out_dir / "summary.csv", index=False)
+
+        report_columns = ["config_label", "n_tasks", "accuracy", "ece", "H_bits_mean", "confidence_mean"] + [
+            f"{c}_mean" for c in metric_columns
+        ]
+        logger.info(
+            f"Sampled summary (benchmark metrics, primary={primary_metric}):\n"
+            f"{summary[report_columns].to_string(index=False)}"
+        )
+
+        n_tasks = per_config["task_id"].nunique()
+        if calibrated and n_tasks < 4 * n_ece_bins:
+            logger.warning(
+                f"ECE is being estimated from {n_tasks} tasks across {n_ece_bins} bins "
+                f"(~{n_tasks / n_ece_bins:.1f} tasks/bin). Treat it as illustrative only -- "
+                f"a trustworthy reliability diagram needs on the order of 100-200 tasks."
+            )
+
+        if calibrated:
+            plot_entropy_vs_error(per_config, out_dir, primary_metric, ece_threshold)
+            plot_reliability(bin_tables, eces, out_dir, primary_metric)
+        else:
+            logger.warning(
+                f"dataset={dataset!r} exposes no per-example score (PRIMARY_METRIC is None); "
+                "skipping the entropy-vs-error scatter and reliability diagram, reporting aggregate metrics only."
+            )
+        plot_accuracy_vs_ratio(summary, out_dir, metric_columns, primary_metric)
+        logger.info(f"Saved per_config.csv, comparison.csv, summary and plots to {out_dir}")
         return
 
-    records = pd.read_csv(records_path, dtype={"task_id": str})
-
-    per_task = records.groupby(["ratio", "task_id"])[METRIC_COLUMNS].mean().reset_index()
-    per_task.to_csv(out_dir / "per_task_summary.csv", index=False)
-
-    summary = aggregate(records)
-    summary.to_csv(out_dir / "summary.csv", index=False)
-    logger.info(f"Dataset-level summary:\n{summary.to_string(index=False)}")
-
-    zero_ratio_summary = summary[summary["ratio"] == 0.0]
-    if not zero_ratio_summary.empty:
-        max_kl = zero_ratio_summary["mean_kl_bits"].iloc[0]
-        if max_kl > 1e-3:
-            logger.warning(
-                f"Sanity check failed: compression_ratio=0.0 should reproduce full attention "
-                f"exactly, but mean KL = {max_kl:.6f} bits. Investigate before trusting other ratios."
+    # ---- teacher-forced regime: per-position entropy / KL / cross-entropy ----
+    elif teacher_forcing:
+        for task in tasks:
+            df = process_teacher_forced_task(
+                model_, tokenizer, task, ratios, n_sink, max_new_tokens, max_reference_tokens, max_context_length,
+                decoding_compression_interval, decoding_target_size,
             )
-        else:
-            logger.info(f"Sanity check passed: compression_ratio=0.0 matches full attention (mean KL={max_kl:.2e} bits).")
+            if df is not None:
+                df.to_csv(records_path, mode="a", header=not records_path.exists(), index=False)
 
-    plot_dataset_summary(per_task, summary, out_dir)
-    for ratio in ratios:
-        if ratio == 0.0:
-            continue
-        plot_position_traces(records, ratio, out_dir)
-        plot_cache_composition(records, ratio, n_sink, out_dir)
-    logger.info(f"Saved records, summary and plots to {out_dir}")
+        if not records_path.exists():
+            logger.error("No task produced usable records, aborting.")
+            return
+
+        records = pd.read_csv(records_path, dtype={"task_id": str})
+
+        build_tf_per_config(records).to_csv(out_dir / "per_config.csv", index=False)
+        build_tf_comparison(records).to_csv(out_dir / "comparison.csv", index=False)
+
+        summary = aggregate_teacher_forced_task_metrics(records)
+        summary.to_csv(out_dir / "summary.csv", index=False)
+        logger.info(f"Dataset-level summary:\n{summary.to_string(index=False)}")
+
+        per_task = records.groupby(["ratio", "task_id"])[METRIC_COLUMNS].mean().reset_index()
+        plot_dataset_summary(per_task, summary, out_dir)
+        for ratio in ratios:
+            if ratio == 0.0:
+                continue
+            plot_position_traces(records, ratio, out_dir)
+            plot_cache_composition(records, ratio, n_sink, out_dir)
+        logger.info(f"Saved per_config.csv, comparison.csv, summary and plots to {out_dir}")
 
 
 if __name__ == "__main__":
