@@ -51,6 +51,8 @@ dev = [
     "bs4>=0.0.2,<0.0.3",
     "nvitop>=1.3.2,<2",
     "matplotlib>=3.9.0,<4",
+    # Fork of the (unmaintained since 2022) tikzplotlib; upstream breaks on matplotlib >= 3.6.
+    "tikzplotlib-patched>=0.10.1.post13",
     "sentencepiece>=0.2.0,<0.3",
     "protobuf>=5.27.2,<6",
 ]

@@ -191,7 +191,7 @@ def main(
 
     zero_ratio_summary = summary[summary["ratio"] == 0.0]
     if not zero_ratio_summary.empty:
-        max_kl = zero_ratio_summary["mean_kl_bits"].iloc[0]
+        max_kl = zero_ratio_summary["mean_kl"].iloc[0]
         if max_kl > 1e-3:
             logger.warning(
                 f"Sanity check failed: compression_ratio=0.0 should reproduce full attention "

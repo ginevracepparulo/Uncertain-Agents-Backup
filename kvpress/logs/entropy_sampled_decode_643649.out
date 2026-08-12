@@ -1,0 +1,45 @@
+2.13.0+cu130 NVIDIA GH200 120GB
+/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fuzzywuzzy/fuzz.py:11: UserWarning: Using slow pure-python SequenceMatcher. Install python-Levenshtein to remove this warning
+  warnings.warn('Using slow pure-python SequenceMatcher. Install python-Levenshtein to remove this warning')
+KVzipPress requires multiple forward passes for chunked context reconstruction, resulting in a computational overhead of 2–3 times the initial prefilling cost. This significantly increases the overall prefilling time compared to other compression methods, which is inherent to the KVzip algorithm design.
+KVzipPress requires multiple forward passes for chunked context reconstruction, resulting in a computational overhead of 2–3 times the initial prefilling cost. This significantly increases the overall prefilling time compared to other compression methods, which is inherent to the KVzip algorithm design.
+2026-07-28 11:28:00,417 - INFO - Writing results to results/entropy_analysis/llma32_8b/longbench/hotpotqa/sampled_decode
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/Caching/kvpress/evaluation/entropy_analysis.py", line 1261, in <module>
+    Fire(main)
+    ~~~~^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fire/core.py", line 135, in Fire
+    component_trace = _Fire(component, args, parsed_flag_args, context, name)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fire/core.py", line 468, in _Fire
+    component, remaining_args = _CallAndUpdateTrace(
+                                ~~~~~~~~~~~~~~~~~~~^
+        component,
+        ^^^^^^^^^^
+    ...<2 lines>...
+        treatment='class' if is_class else 'routine',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        target=component.__name__)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fire/core.py", line 684, in _CallAndUpdateTrace
+    component = fn(*varargs, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/Caching/kvpress/evaluation/entropy_analysis.py", line 1137, in main
+    tasks = load_tasks(dataset, data_dir, dataset_split, dataset_path, n_samples)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/Caching/kvpress/evaluation/entropy_analysis.py", line 289, in load_tasks
+    ds = load_dataset(DATASET_REGISTRY[dataset], data_dir=data_dir, split=dataset_split, streaming=True)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/datasets/load.py", line 1698, in load_dataset
+    builder_instance = load_dataset_builder(
+        path=path,
+    ...<10 lines>...
+        **config_kwargs,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/datasets/load.py", line 1325, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+        path,
+    ...<5 lines>...
+        cache_dir=cache_dir,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/datasets/load.py", line 1217, in dataset_module_factory
+    raise e1 from None
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/datasets/load.py", line 1159, in dataset_module_factory
+    raise ConnectionError(f"Couldn't reach '{path}' on the Hub ({e.__class__.__name__})") from e
+ConnectionError: Couldn't reach 'Xnhyacinth/LongBench' on the Hub (OfflineModeIsEnabled)

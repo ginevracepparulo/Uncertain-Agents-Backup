@@ -1,0 +1,225 @@
+2.13.0+cu130 NVIDIA GH200 120GB
+/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fuzzywuzzy/fuzz.py:11: UserWarning: Using slow pure-python SequenceMatcher. Install python-Levenshtein to remove this warning
+  warnings.warn('Using slow pure-python SequenceMatcher. Install python-Levenshtein to remove this warning')
+KVzipPress requires multiple forward passes for chunked context reconstruction, resulting in a computational overhead of 2–3 times the initial prefilling cost. This significantly increases the overall prefilling time compared to other compression methods, which is inherent to the KVzip algorithm design.
+KVzipPress requires multiple forward passes for chunked context reconstruction, resulting in a computational overhead of 2–3 times the initial prefilling cost. This significantly increases the overall prefilling time compared to other compression methods, which is inherent to the KVzip algorithm design.
+2026-07-27 13:31:08,904 - INFO - Writing results to results/entropy_analysis/llma32_8b/longbench/hotpotqa/sampled_prefill
+2026-07-27 13:31:09,281 - INFO - HTTP Request: GET https://huggingface.co/api/agent-harnesses "HTTP/1.1 200 OK"
+2026-07-27 13:31:09,457 - INFO - HTTP Request: HEAD https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-07-27 13:31:09,457 - WARNING - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-07-27 13:31:09,500 - INFO - HTTP Request: HEAD https://huggingface.co/api/resolve-cache/datasets/Xnhyacinth/LongBench/2e9ade51ebf45d98942056c0716234f9d5d257d5/README.md "HTTP/1.1 200 OK"
+2026-07-27 13:31:09,709 - INFO - HTTP Request: HEAD https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/2e9ade51ebf45d98942056c0716234f9d5d257d5/LongBench.py "HTTP/1.1 404 Not Found"
+2026-07-27 13:31:10,222 - INFO - HTTP Request: HEAD https://s3.amazonaws.com/datasets.huggingface.co/datasets/datasets/Xnhyacinth/LongBench/Xnhyacinth/LongBench.py "HTTP/1.1 404 Not Found"
+2026-07-27 13:31:10,405 - INFO - HTTP Request: GET https://huggingface.co/api/datasets/Xnhyacinth/LongBench/revision/2e9ade51ebf45d98942056c0716234f9d5d257d5 "HTTP/1.1 200 OK"
+2026-07-27 13:31:10,535 - INFO - HTTP Request: HEAD https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/2e9ade51ebf45d98942056c0716234f9d5d257d5/.huggingface.yaml "HTTP/1.1 404 Not Found"
+2026-07-27 13:31:10,707 - INFO - HTTP Request: GET https://huggingface.co/api/datasets/Xnhyacinth/LongBench/tree/2e9ade51ebf45d98942056c0716234f9d5d257d5/hotpotqa%2Fdata?recursive=true&expand=false "HTTP/1.1 404 Not Found"
+2026-07-27 13:31:10,948 - INFO - HTTP Request: GET https://huggingface.co/api/datasets/Xnhyacinth/LongBench/tree/2e9ade51ebf45d98942056c0716234f9d5d257d5/hotpotqa?recursive=false&expand=false "HTTP/1.1 200 OK"
+2026-07-27 13:31:11,078 - INFO - HTTP Request: GET https://huggingface.co/api/datasets/Xnhyacinth/LongBench/tree/2e9ade51ebf45d98942056c0716234f9d5d257d5?recursive=false&expand=false "HTTP/1.1 200 OK"
+2026-07-27 13:31:11,224 - INFO - HTTP Request: HEAD https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/2e9ade51ebf45d98942056c0716234f9d5d257d5/dataset_infos.json "HTTP/1.1 404 Not Found"
+2026-07-27 13:31:11,376 - INFO - HTTP Request: GET https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/2e9ade51ebf45d98942056c0716234f9d5d257d5/hotpotqa/test-00000-of-00001.parquet "HTTP/1.1 302 Found"
+2026-07-27 13:31:11,830 - INFO - HTTP Request: GET https://us.aws.cdn.hf.co/xet-bridge-us/67c1a2f8ac258d972abcce84/c68a5b51e09a108d003f3568123cafe88fee4ac7ea58f3217c0267cd9bacc8a8?user_id=public&response-content-disposition=inline%3B+filename*%3DUTF-8%27%27test-00000-of-00001.parquet%3B+filename%3D%22test-00000-of-00001.parquet%22%3B&X-Xet-Cas-Uid=public&Expires=1785155471&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly91cy5hd3MuY2RuLmhmLmNvL3hldC1icmlkZ2UtdXMvNjdjMWEyZjhhYzI1OGQ5NzJhYmNjZTg0L2M2OGE1YjUxZTA5YTEwOGQwMDNmMzU2ODEyM2NhZmU4OGZlZTRhYzdlYTU4ZjMyMTdjMDI2N2NkOWJhY2M4YThcXD91c2VyX2lkPXB1YmxpYyZyZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPWlubGluZSUzQitmaWxlbmFtZSUyQSUzRFVURi04JTI3JTI3dGVzdC0wMDAwMC1vZi0wMDAwMS5wYXJxdWV0JTNCK2ZpbGVuYW1lJTNEJTIydGVzdC0wMDAwMC1vZi0wMDAwMS5wYXJxdWV0JTIyJTNCJlgtWGV0LUNhcy1VaWQ9cHVibGljIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJFcG9jaFRpbWUiOjE3ODUxNTU0NzF9LCJCeXRlUmFuZ2UiOnsiRXhwZWN0ZWRIZWFkZXIiOiJieXRlcz02NTYyNDI4LTY2Mjc5NjMifX19XX0_&Signature=MEUCICgyCXdE4q07fJIC4tdLGXCyvSOhZRn-KSYuiUVa6rnPAiEA1DcLlJE0nsw9cwUMaDP6b6G23TC90wUa1wgAePKQxZc_&Key-Pair-Id=01KXEF4KZ1B6FV465MAWR4M21F "HTTP/1.1 206 Partial Content"
+2026-07-27 13:31:12,170 - INFO - HTTP Request: GET https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/2e9ade51ebf45d98942056c0716234f9d5d257d5/hotpotqa/test-00000-of-00001.parquet "HTTP/1.1 302 Found"
+2026-07-27 13:31:12,520 - INFO - HTTP Request: GET https://us.aws.cdn.hf.co/xet-bridge-us/67c1a2f8ac258d972abcce84/c68a5b51e09a108d003f3568123cafe88fee4ac7ea58f3217c0267cd9bacc8a8?response-content-disposition=inline%3B+filename*%3DUTF-8%27%27test-00000-of-00001.parquet%3B+filename%3D%22test-00000-of-00001.parquet%22%3B&user_id=public&X-Xet-Cas-Uid=public&Expires=1785155472&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly91cy5hd3MuY2RuLmhmLmNvL3hldC1icmlkZ2UtdXMvNjdjMWEyZjhhYzI1OGQ5NzJhYmNjZTg0L2M2OGE1YjUxZTA5YTEwOGQwMDNmMzU2ODEyM2NhZmU4OGZlZTRhYzdlYTU4ZjMyMTdjMDI2N2NkOWJhY2M4YThcXD9yZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPWlubGluZSUzQitmaWxlbmFtZSUyQSUzRFVURi04JTI3JTI3dGVzdC0wMDAwMC1vZi0wMDAwMS5wYXJxdWV0JTNCK2ZpbGVuYW1lJTNEJTIydGVzdC0wMDAwMC1vZi0wMDAwMS5wYXJxdWV0JTIyJTNCJnVzZXJfaWQ9cHVibGljJlgtWGV0LUNhcy1VaWQ9cHVibGljIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJFcG9jaFRpbWUiOjE3ODUxNTU0NzJ9LCJCeXRlUmFuZ2UiOnsiRXhwZWN0ZWRIZWFkZXIiOiJieXRlcz02NTYyNDI4LTY2Mjc5NjMifX19XX0_&Signature=MEQCICOfM6eCJDohiT5bNjuBIJ3TQgRP%7EOUkBj25oxzskWRYAiBhl9jUQaoFQp2R4VViUTy8VVmiQDjtM2mveWBri5gorA__&Key-Pair-Id=01KXEF4KZ1B6FV465MAWR4M21F "HTTP/1.1 206 Partial Content"
+2026-07-27 13:31:12,672 - INFO - HTTP Request: GET https://huggingface.co/datasets/Xnhyacinth/LongBench/resolve/2e9ade51ebf45d98942056c0716234f9d5d257d5/hotpotqa/test-00000-of-00001.parquet "HTTP/1.1 302 Found"
+2026-07-27 13:31:13,043 - INFO - HTTP Request: GET https://us.aws.cdn.hf.co/xet-bridge-us/67c1a2f8ac258d972abcce84/c68a5b51e09a108d003f3568123cafe88fee4ac7ea58f3217c0267cd9bacc8a8?response-content-disposition=inline%3B+filename*%3DUTF-8%27%27test-00000-of-00001.parquet%3B+filename%3D%22test-00000-of-00001.parquet%22%3B&X-Xet-Cas-Uid=public&user_id=public&Expires=1785155472&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly91cy5hd3MuY2RuLmhmLmNvL3hldC1icmlkZ2UtdXMvNjdjMWEyZjhhYzI1OGQ5NzJhYmNjZTg0L2M2OGE1YjUxZTA5YTEwOGQwMDNmMzU2ODEyM2NhZmU4OGZlZTRhYzdlYTU4ZjMyMTdjMDI2N2NkOWJhY2M4YThcXD9yZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPWlubGluZSUzQitmaWxlbmFtZSUyQSUzRFVURi04JTI3JTI3dGVzdC0wMDAwMC1vZi0wMDAwMS5wYXJxdWV0JTNCK2ZpbGVuYW1lJTNEJTIydGVzdC0wMDAwMC1vZi0wMDAwMS5wYXJxdWV0JTIyJTNCJlgtWGV0LUNhcy1VaWQ9cHVibGljJnVzZXJfaWQ9cHVibGljIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJFcG9jaFRpbWUiOjE3ODUxNTU0NzJ9LCJCeXRlUmFuZ2UiOnsiRXhwZWN0ZWRIZWFkZXIiOiJieXRlcz00LTY2Mjc5NjMifX19XX0_&Signature=MEUCIAcbxxhMugZ4LdO4fNQafIbaxOLaiFCn78Vdbe0gC%7EjUAiEAsSihLvpQVE49knzr6HwoeUmxw0-L%7ED0Iyeqjcep0lcs_&Key-Pair-Id=01KXEF4KZ1B6FV465MAWR4M21F "HTTP/1.1 206 Partial Content"
+2026-07-27 13:31:13,496 - INFO - Loaded 150 task(s)
+2026-07-27 13:31:13,624 - INFO - HTTP Request: HEAD https://huggingface.co/unsloth/Llama-3.2-8B-Instruct/resolve/main/config.json "HTTP/1.1 401 Unauthorized"
+2026-07-27 13:31:13,756 - INFO - HTTP Request: HEAD https://huggingface.co/unsloth/Llama-3.2-8B-Instruct/resolve/main/config.json "HTTP/1.1 401 Unauthorized"
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_http.py", line 795, in hf_raise_for_status
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://huggingface.co/unsloth/Llama-3.2-8B-Instruct/resolve/main/config.json'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/utils/hub.py", line 419, in cached_files
+    hf_hub_download(
+    ~~~~~~~~~~~~~~~^
+        path_or_repo_id,
+        ^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        local_files_only=local_files_only,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1013, in hf_hub_download
+    return _hf_hub_download_to_cache_dir(
+        # Destination
+    ...<15 lines>...
+        dry_run=dry_run,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1165, in _hf_hub_download_to_cache_dir
+    _raise_on_head_call_error(head_call_error, force_download, local_files_only)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1864, in _raise_on_head_call_error
+    raise head_call_error
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1707, in _get_metadata_or_catch_error
+    metadata = get_hf_file_metadata(
+        url=url,
+    ...<4 lines>...
+        retry_on_errors=retry_on_errors,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1615, in get_hf_file_metadata
+    response = _httpx_follow_relative_redirects_with_backoff(
+        method="HEAD", url=url, headers=hf_headers, timeout=timeout, retry_on_errors=retry_on_errors
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_http.py", line 726, in _httpx_follow_relative_redirects_with_backoff
+    hf_raise_for_status(response)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_http.py", line 882, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response, repo_type=repo_type, repo_id=repo_id) from e
+huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-6a674181-7d2b940229c51d4f15444a48;0b0c5413-d14f-44ef-8349-0e7572e616af)
+
+Repository Not Found for url: https://huggingface.co/unsloth/Llama-3.2-8B-Instruct/resolve/main/config.json.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+Invalid username or password.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/models/auto/tokenization_auto.py", line 624, in from_pretrained
+    config = AutoConfig.from_pretrained(
+        pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/models/auto/configuration_auto.py", line 1403, in from_pretrained
+    config_dict, unused_kwargs = PreTrainedConfig.get_config_dict(pretrained_model_name_or_path, **kwargs)
+                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/configuration_utils.py", line 572, in get_config_dict
+    config_dict, kwargs = cls._get_config_dict(pretrained_model_name_or_path, **kwargs)
+                          ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/configuration_utils.py", line 627, in _get_config_dict
+    resolved_config_file = cached_file(
+        pretrained_model_name_or_path,
+    ...<9 lines>...
+        _commit_hash=commit_hash,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/utils/hub.py", line 276, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/utils/hub.py", line 449, in cached_files
+    raise OSError(
+    ...<4 lines>...
+    ) from e
+OSError: unsloth/Llama-3.2-8B-Instruct is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_http.py", line 795, in hf_raise_for_status
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://huggingface.co/unsloth/Llama-3.2-8B-Instruct/resolve/main/config.json'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/utils/hub.py", line 419, in cached_files
+    hf_hub_download(
+    ~~~~~~~~~~~~~~~^
+        path_or_repo_id,
+        ^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+        local_files_only=local_files_only,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1013, in hf_hub_download
+    return _hf_hub_download_to_cache_dir(
+        # Destination
+    ...<15 lines>...
+        dry_run=dry_run,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1165, in _hf_hub_download_to_cache_dir
+    _raise_on_head_call_error(head_call_error, force_download, local_files_only)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1864, in _raise_on_head_call_error
+    raise head_call_error
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1707, in _get_metadata_or_catch_error
+    metadata = get_hf_file_metadata(
+        url=url,
+    ...<4 lines>...
+        retry_on_errors=retry_on_errors,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/file_download.py", line 1615, in get_hf_file_metadata
+    response = _httpx_follow_relative_redirects_with_backoff(
+        method="HEAD", url=url, headers=hf_headers, timeout=timeout, retry_on_errors=retry_on_errors
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_http.py", line 726, in _httpx_follow_relative_redirects_with_backoff
+    hf_raise_for_status(response)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/huggingface_hub/utils/_http.py", line 882, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response, repo_type=repo_type, repo_id=repo_id) from e
+huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-6a674181-4b58a2275951d5f31e7285cb;533c901d-a3e9-40c5-8bc7-283534109c68)
+
+Repository Not Found for url: https://huggingface.co/unsloth/Llama-3.2-8B-Instruct/resolve/main/config.json.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+Invalid username or password.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/Caching/kvpress/evaluation/entropy_analysis.py", line 1261, in <module>
+    Fire(main)
+    ~~~~^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fire/core.py", line 135, in Fire
+    component_trace = _Fire(component, args, parsed_flag_args, context, name)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fire/core.py", line 468, in _Fire
+    component, remaining_args = _CallAndUpdateTrace(
+                                ~~~~~~~~~~~~~~~~~~~^
+        component,
+        ^^^^^^^^^^
+    ...<2 lines>...
+        treatment='class' if is_class else 'routine',
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        target=component.__name__)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/fire/core.py", line 684, in _CallAndUpdateTrace
+    component = fn(*varargs, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/Caching/kvpress/evaluation/entropy_analysis.py", line 1155, in main
+    model_, tokenizer = load_model_and_tokenizer(model, device)
+                        ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/Caching/kvpress/evaluation/entropy_analysis.py", line 256, in load_model_and_tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/models/auto/tokenization_auto.py", line 628, in from_pretrained
+    config = PreTrainedConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/configuration_utils.py", line 531, in from_pretrained
+    config_dict, kwargs = cls.get_config_dict(pretrained_model_name_or_path, **kwargs)
+                          ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/configuration_utils.py", line 572, in get_config_dict
+    config_dict, kwargs = cls._get_config_dict(pretrained_model_name_or_path, **kwargs)
+                          ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/configuration_utils.py", line 627, in _get_config_dict
+    resolved_config_file = cached_file(
+        pretrained_model_name_or_path,
+    ...<9 lines>...
+        _commit_hash=commit_hash,
+    )
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/utils/hub.py", line 276, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp/venvs/entropy/lib/python3.13/site-packages/transformers/utils/hub.py", line 449, in cached_files
+    raise OSError(
+    ...<4 lines>...
+    ) from e
+OSError: unsloth/Llama-3.2-8B-Instruct is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`

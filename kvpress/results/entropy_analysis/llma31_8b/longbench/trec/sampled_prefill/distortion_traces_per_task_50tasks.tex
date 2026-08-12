@@ -1,0 +1,821 @@
+% This file was created with tikzplotlib v0.10.1.post13.
+\begin{tikzpicture}
+
+\definecolor{darkcyan30151138}{RGB}{30,151,138}
+\definecolor{darkcyan30153138}{RGB}{30,153,138}
+\definecolor{darkcyan30154137}{RGB}{30,154,137}
+\definecolor{darkcyan30155137}{RGB}{30,155,137}
+\definecolor{darkcyan33141140}{RGB}{33,141,140}
+\definecolor{darkcyan38127142}{RGB}{38,127,142}
+\definecolor{darkgrey176}{RGB}{176,176,176}
+\definecolor{darkslateblue5197141}{RGB}{51,97,141}
+\definecolor{darkslateblue5687140}{RGB}{56,87,140}
+\definecolor{darkslateblue5981138}{RGB}{59,81,138}
+\definecolor{darkslateblue6077138}{RGB}{60,77,138}
+\definecolor{darkslateblue6272136}{RGB}{62,72,136}
+\definecolor{darkslateblue6468135}{RGB}{64,68,135}
+\definecolor{darkslateblue6759131}{RGB}{67,59,131}
+\definecolor{darkslateblue6857130}{RGB}{68,57,130}
+\definecolor{darkslateblue6950127}{RGB}{69,50,127}
+\definecolor{darkslateblue7143122}{RGB}{71,43,122}
+\definecolor{gold23122825}{RGB}{231,228,25}
+\definecolor{gold23622826}{RGB}{236,228,26}
+\definecolor{gold25323136}{RGB}{253,231,36}
+\definecolor{greenyellow19122336}{RGB}{191,223,36}
+\definecolor{greenyellow19722333}{RGB}{197,223,33}
+\definecolor{greenyellow21022527}{RGB}{210,225,27}
+\definecolor{indigo68184}{RGB}{68,1,84}
+\definecolor{indigo701295}{RGB}{70,12,95}
+\definecolor{indigo711799}{RGB}{71,17,99}
+\definecolor{indigo7120102}{RGB}{71,20,102}
+\definecolor{indigo7121103}{RGB}{71,21,103}
+\definecolor{indigo7228110}{RGB}{72,28,110}
+\definecolor{mediumseagreen10520491}{RGB}{105,204,91}
+\definecolor{mediumseagreen34167132}{RGB}{34,167,132}
+\definecolor{mediumseagreen38172129}{RGB}{38,172,129}
+\definecolor{mediumseagreen50181122}{RGB}{50,181,122}
+\definecolor{mediumseagreen61187116}{RGB}{61,187,116}
+\definecolor{mediumseagreen62188115}{RGB}{62,188,115}
+\definecolor{mediumseagreen73193109}{RGB}{73,193,109}
+\definecolor{mediumseagreen77194107}{RGB}{77,194,107}
+\definecolor{mediumseagreen9120098}{RGB}{91,200,98}
+\definecolor{teal40122142}{RGB}{40,122,142}
+\definecolor{yellowgreen10920688}{RGB}{109,206,88}
+\definecolor{yellowgreen14121468}{RGB}{141,214,68}
+\definecolor{yellowgreen15721758}{RGB}{157,217,58}
+\definecolor{yellowgreen17021950}{RGB}{170,219,50}
+\definecolor{yellowgreen17522046}{RGB}{175,220,46}
+\definecolor{yellowgreen17822144}{RGB}{178,221,44}
+
+\begin{groupplot}[group style={group size=2 by 1}]
+\nextgroupplot[
+tick align=outside,
+tick pos=left,
+title={Information gain},
+x grid style={darkgrey176},
+xlabel={Compression ratio},
+xmajorgrids,
+xmin=0.215, xmax=0.985,
+xtick style={color=black},
+y grid style={darkgrey176},
+ylabel={I(Y;X_res) = Ĥ(Y|X_comp) - Ĥ(Y|X_full) (bits/sequence)},
+ymajorgrids,
+ymin=-26.005, ymax=81.614,
+ytick style={color=black}
+]
+\addplot [line width=0.27794pt, darkslateblue5197141, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -9.6988
+0.5 1.103
+0.75 8.3104
+0.95 32.478
+};
+\addplot [line width=0.56981pt, yellowgreen17021950, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.90405
+0.5 19.198
+0.75 27.962
+0.95 51.414
+};
+\addplot [line width=0.39989pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.0634
+0.5 7.5093
+0.75 7.2798
+0.95 16.997
+};
+\addplot [line width=0.61632pt, gold23122825, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.1015
+0.5 40.705
+0.75 42.603
+0.95 45.293
+};
+\addplot [line width=0.58758pt, greenyellow19122336, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 7.4424
+0.5 4.1678
+0.75 15.439
+0.95 19.589
+};
+\addplot [line width=0.12pt, indigo68184, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.52109
+0.5 2.935
+0.75 10.674
+0.95 42.265
+};
+\addplot [line width=0.52106pt, yellowgreen10920688, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -2.5715
+0.5 -7.5547
+0.75 -4.3808
+0.95 0.72645
+};
+\addplot [line width=0.2229pt, darkslateblue6468135, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.8114
+0.5 4.3543
+0.75 5.7747
+0.95 21.536
+};
+\addplot [line width=0.48747pt, mediumseagreen73193109, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 23.659
+0.5 25.656
+0.75 43.555
+0.95 57.715
+};
+\addplot [line width=0.13242pt, indigo701295, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -10.125
+0.5 -8.1861
+0.75 15.406
+0.95 13.908
+};
+\addplot [line width=0.22897pt, darkslateblue6272136, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -5.5689
+0.5 1.4334
+0.75 15.107
+0.95 18.058
+};
+\addplot [line width=0.25738pt, darkslateblue5687140, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -2.2175
+0.5 -2.1473
+0.75 -16.726
+0.95 17.905
+};
+\addplot [line width=0.20206pt, darkslateblue6857130, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 10.475
+0.5 25.644
+0.75 22.022
+0.95 34.883
+};
+\addplot [line width=0.39549pt, darkcyan30153138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -5.8579
+0.5 7.5645
+0.75 12.962
+0.95 20.329
+};
+\addplot [line width=0.57465pt, yellowgreen17522046, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.38699
+0.5 20.066
+0.75 23.51
+0.95 76.722
+};
+\addplot [line width=0.39081pt, darkcyan30151138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 8.1826
+0.5 15.507
+0.75 22.132
+0.95 37.178
+};
+\addplot [line width=0.19281pt, darkslateblue6950127, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 20.717
+0.5 6.3344
+0.75 25.884
+0.95 49.585
+};
+\addplot [line width=0.42774pt, mediumseagreen34167132, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -15.584
+0.5 -15.538
+0.75 -2.1982
+0.95 11.787
+};
+\addplot [line width=0.3278pt, teal40122142, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.645
+0.5 9.9647
+0.75 -1.5692
+0.95 46.842
+};
+\addplot [line width=0.59097pt, greenyellow19722333, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.7732
+0.5 5.8055
+0.75 15.78
+0.95 36.283
+};
+\addplot [line width=0.63666pt, gold25323136, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 6.2903
+0.5 3.776
+0.75 14.926
+0.95 26.86
+};
+\addplot [line width=0.34167pt, darkcyan38127142, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -0.70264
+0.5 -6.315
+0.75 -1.5192
+0.95 28.03
+};
+\addplot [line width=0.52256pt, yellowgreen10920688, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -3.062
+0.5 -7.4844
+0.75 -0.88857
+0.95 34.929
+};
+\addplot [line width=0.14329pt, indigo7120102, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.9031
+0.5 15.297
+0.75 12.09
+0.95 31.638
+};
+\addplot [line width=0.37053pt, darkcyan33141140, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -0.61102
+0.5 8.289
+0.75 23.392
+0.95 56.162
+};
+\addplot [line width=0.15638pt, indigo7228110, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.0268
+0.5 -21.113
+0.75 6.3742
+0.95 15.873
+};
+\addplot [line width=0.39928pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.15391
+0.5 3.484
+0.75 7.4374
+0.95 38.105
+};
+\addplot [line width=0.62089pt, gold23622826, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.10081
+0.5 0.56567
+0.75 6.2925
+0.95 1.1605
+};
+\addplot [line width=0.45933pt, mediumseagreen50181122, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 14.692
+0.5 11.985
+0.75 7.8328
+0.95 39.754
+};
+\addplot [line width=0.24602pt, darkslateblue5981138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -4.5201
+0.5 3.1392
+0.75 19.691
+0.95 24.851
+};
+\addplot [line width=0.13967pt, indigo711799, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -0.11044
+0.5 5.8184
+0.75 9.2753
+0.95 33.966
+};
+\addplot [line width=0.50507pt, mediumseagreen9120098, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.5268
+0.5 17.681
+0.75 17.295
+0.95 37.654
+};
+\addplot [line width=0.14568pt, indigo7121103, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 36.283
+0.5 40.708
+0.75 31.868
+0.95 43.255
+};
+\addplot [line width=0.51705pt, mediumseagreen10520491, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -18.527
+0.5 -13.693
+0.75 21.052
+0.95 10.614
+};
+\addplot [line width=0.399pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 6.3556
+0.5 8.4433
+0.75 43.282
+0.95 22.612
+};
+\addplot [line width=0.57627pt, yellowgreen17822144, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.3972
+0.5 17.049
+0.75 7.6397
+0.95 27.73
+};
+\addplot [line width=0.56123pt, yellowgreen15721758, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.38448
+0.5 11.357
+0.75 32.87
+0.95 48.634
+};
+\addplot [line width=0.17978pt, darkslateblue7143122, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -6.3052
+0.5 -9.3534
+0.75 -3.4096
+0.95 29.118
+};
+\addplot [line width=0.23939pt, darkslateblue6077138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -2.2552
+0.5 10.38
+0.75 13.371
+0.95 33.674
+};
+\addplot [line width=0.20685pt, darkslateblue6759131, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 22.305
+0.5 29.211
+0.75 33.488
+0.95 38.949
+};
+\addplot [line width=0.43788pt, mediumseagreen38172129, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.5152
+0.5 0.55433
+0.75 5.5694
+0.95 35.723
+};
+\addplot [line width=0.49086pt, mediumseagreen77194107, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 9.8022
+0.5 10.034
+0.75 15.358
+0.95 56.937
+};
+\addplot [line width=0.54752pt, yellowgreen14121468, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -15.386
+0.5 0.38775
+0.75 16.629
+0.95 34.761
+};
+\addplot [line width=0.60156pt, greenyellow21022527, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 12.746
+0.5 32.984
+0.75 31.952
+0.95 45.508
+};
+\addplot [line width=0.40206pt, darkcyan30155137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -6.017
+0.5 -5.3877
+0.75 -6.8435
+0.95 10.67
+};
+\addplot [line width=0.47443pt, mediumseagreen62188115, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -2.9994
+0.5 12.245
+0.75 6.1861
+0.95 22.437
+};
+\addplot [line width=0.40011pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 8.3538
+0.5 5.004
+0.75 12.75
+0.95 36.517
+};
+\addplot [line width=0.4737pt, mediumseagreen61187116, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 11.109
+0.5 12.251
+0.75 3.5297
+0.95 17.712
+};
+\addplot [line width=0.58708pt, greenyellow19122336, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 -12.051
+0.5 11.014
+0.75 20.244
+0.95 10.179
+};
+\addplot [line width=0.3283pt, teal40122142, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 8.5685
+0.5 14.118
+0.75 0.66988
+0.95 16.788
+};
+\addplot [very thin, black]
+table {%
+0.215 0
+0.985 0
+};
+
+\nextgroupplot[
+tick align=outside,
+tick pos=left,
+title={Distribution shift},
+x grid style={darkgrey176},
+xlabel={Compression ratio},
+xmajorgrids,
+xmin=0.215, xmax=0.985,
+xtick style={color=black},
+y grid style={darkgrey176},
+ylabel={KL(p_full || p_compressed) (bits/sequence)},
+ymajorgrids,
+ymin=-2.6992, ymax=58.684,
+ytick style={color=black}
+]
+\addplot [line width=0.27794pt, darkslateblue5197141, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 6.3172
+0.5 8.2095
+0.75 10.441
+0.95 18.141
+};
+\addplot [line width=0.56981pt, yellowgreen17021950, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.908
+0.5 3.1944
+0.75 4.4531
+0.95 14.689
+};
+\addplot [line width=0.39989pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.093
+0.5 2.1957
+0.75 5.3778
+0.95 9.0302
+};
+\addplot [line width=0.61632pt, gold23122825, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 8.7605
+0.5 4.2029
+0.75 7.1058
+0.95 11.206
+};
+\addplot [line width=0.58758pt, greenyellow19122336, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.0725
+0.5 8.7756
+0.75 10.674
+0.95 16.216
+};
+\addplot [line width=0.12pt, indigo68184, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.5313
+0.5 1.8959
+0.75 2.6243
+0.95 31.392
+};
+\addplot [line width=0.52106pt, yellowgreen10920688, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.4662
+0.5 8.3902
+0.75 6.4455
+0.95 13.002
+};
+\addplot [line width=0.2229pt, darkslateblue6468135, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.1324
+0.5 4.2451
+0.75 4.0127
+0.95 13.61
+};
+\addplot [line width=0.48747pt, mediumseagreen73193109, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.6661
+0.5 2.4847
+0.75 4.0512
+0.95 15.751
+};
+\addplot [line width=0.13242pt, indigo701295, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.2853
+0.5 9.9478
+0.75 16.521
+0.95 40.065
+};
+\addplot [line width=0.22897pt, darkslateblue6272136, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.8244
+0.5 2.1898
+0.75 39.831
+0.95 40.661
+};
+\addplot [line width=0.25738pt, darkslateblue5687140, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.6693
+0.5 10.992
+0.75 16.201
+0.95 20.525
+};
+\addplot [line width=0.20206pt, darkslateblue6857130, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.4971
+0.5 10.813
+0.75 18.298
+0.95 22.906
+};
+\addplot [line width=0.39549pt, darkcyan30153138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.2157
+0.5 3.6393
+0.75 4.8675
+0.95 13.57
+};
+\addplot [line width=0.57465pt, yellowgreen17522046, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.6188
+0.5 7.2934
+0.75 6.6107
+0.95 11.779
+};
+\addplot [line width=0.39081pt, darkcyan30151138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.3633
+0.5 4.3619
+0.75 3.0347
+0.95 7.482
+};
+\addplot [line width=0.19281pt, darkslateblue6950127, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.4223
+0.5 3.0177
+0.75 4.9096
+0.95 15.757
+};
+\addplot [line width=0.42774pt, mediumseagreen34167132, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 11.912
+0.5 13.577
+0.75 20.145
+0.95 29.279
+};
+\addplot [line width=0.3278pt, teal40122142, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.3109
+0.5 1.6387
+0.75 3.0724
+0.95 28.358
+};
+\addplot [line width=0.59097pt, greenyellow19722333, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.4993
+0.5 6.3984
+0.75 11.235
+0.95 26.969
+};
+\addplot [line width=0.63666pt, gold25323136, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.0294
+0.5 2.8503
+0.75 4.956
+0.95 16.365
+};
+\addplot [line width=0.34167pt, darkcyan38127142, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.9668
+0.5 4.9777
+0.75 5.5975
+0.95 29
+};
+\addplot [line width=0.52256pt, yellowgreen10920688, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.7083
+0.5 2.1485
+0.75 3.6049
+0.95 12.435
+};
+\addplot [line width=0.14329pt, indigo7120102, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.6062
+0.5 6.0718
+0.75 9.4183
+0.95 39.115
+};
+\addplot [line width=0.37053pt, darkcyan33141140, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 1.1946
+0.5 2.3767
+0.75 3.6214
+0.95 10.377
+};
+\addplot [line width=0.15638pt, indigo7228110, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 9.6123
+0.5 17.166
+0.75 18.226
+0.95 23.8
+};
+\addplot [line width=0.39928pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.6559
+0.5 3.2059
+0.75 3.0138
+0.95 18.848
+};
+\addplot [line width=0.62089pt, gold23622826, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.2841
+0.5 8.1166
+0.75 7.29
+0.95 11.702
+};
+\addplot [line width=0.45933pt, mediumseagreen50181122, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.42852
+0.5 0.34319
+0.75 0.34279
+0.95 2.2276
+};
+\addplot [line width=0.24602pt, darkslateblue5981138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.8505
+0.5 5.4403
+0.75 24.262
+0.95 27.237
+};
+\addplot [line width=0.13967pt, indigo711799, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 7.1131
+0.5 12.099
+0.75 24.045
+0.95 33.351
+};
+\addplot [line width=0.50507pt, mediumseagreen9120098, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.985
+0.5 3.9931
+0.75 8.9645
+0.95 19.057
+};
+\addplot [line width=0.14568pt, indigo7121103, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.7096
+0.5 29.603
+0.75 31.81
+0.95 32.278
+};
+\addplot [line width=0.51705pt, mediumseagreen10520491, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 11.454
+0.5 13.976
+0.75 19.228
+0.95 34.646
+};
+\addplot [line width=0.399pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.4606
+0.5 0.73483
+0.75 2.0136
+0.95 2.8724
+};
+\addplot [line width=0.57627pt, yellowgreen17822144, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.4817
+0.5 5.2695
+0.75 6.2626
+0.95 10.036
+};
+\addplot [line width=0.56123pt, yellowgreen15721758, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.091006
+0.5 2.7867
+0.75 1.9395
+0.95 2.5059
+};
+\addplot [line width=0.17978pt, darkslateblue7143122, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 6.1043
+0.5 10.776
+0.75 13.47
+0.95 24.427
+};
+\addplot [line width=0.23939pt, darkslateblue6077138, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.0303
+0.5 5.1252
+0.75 8.3679
+0.95 30.854
+};
+\addplot [line width=0.20685pt, darkslateblue6759131, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 4.471
+0.5 10.844
+0.75 18.184
+0.95 55.894
+};
+\addplot [line width=0.43788pt, mediumseagreen38172129, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.1852
+0.5 2.6382
+0.75 3.2442
+0.95 7.6148
+};
+\addplot [line width=0.49086pt, mediumseagreen77194107, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.9698
+0.5 2.651
+0.75 5.0548
+0.95 16.621
+};
+\addplot [line width=0.54752pt, yellowgreen14121468, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.3857
+0.5 3.6867
+0.75 5.4668
+0.95 11.515
+};
+\addplot [line width=0.60156pt, greenyellow21022527, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 5.3147
+0.5 10.972
+0.75 15.691
+0.95 20.82
+};
+\addplot [line width=0.40206pt, darkcyan30155137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.51282
+0.5 1.0035
+0.75 1.2576
+0.95 2.8103
+};
+\addplot [line width=0.47443pt, mediumseagreen62188115, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 0.92215
+0.5 2.0328
+0.75 2.8545
+0.95 4.7478
+};
+\addplot [line width=0.40011pt, darkcyan30154137, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.673
+0.5 4.9285
+0.75 5.573
+0.95 11.769
+};
+\addplot [line width=0.4737pt, mediumseagreen61187116, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 3.0543
+0.5 4.8123
+0.75 6.1492
+0.95 13.827
+};
+\addplot [line width=0.58708pt, greenyellow19122336, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 6.8994
+0.5 6.8212
+0.75 9.6909
+0.95 20.137
+};
+\addplot [line width=0.3283pt, teal40122142, opacity=0.55, mark=*, mark size=1.5, mark options={solid}]
+table {%
+0.25 2.3836
+0.5 5.0727
+0.75 4.4913
+0.95 20.992
+};
+\addplot [very thin, black]
+table {%
+0.215 0
+0.985 0
+};
+\end{groupplot}
+
+\begin{axis}[
+axis y line=right,
+colorbar,
+colorbar style={ylabel={context length (prompt tokens)}},
+colormap/viridis,
+hide x axis,
+hide y axis,
+point meta max=11428,
+point meta min=2084,
+tick align=outside,
+xmin=0, xmax=1,
+xtick pos=left,
+y grid style={darkgrey176},
+ylabel={context length (prompt tokens)},
+ymin=2084, ymax=11428,
+ytick pos=right,
+ytick style={color=black},
+yticklabel style={anchor=west}
+]
+\end{axis}
+
+\draw ({$(current bounding box.south west)!0.5!(current bounding box.south east)$}|-{$(current bounding box.south west)!0.99506!(current bounding box.north west)$}) node[
+  scale=0.9,
+  anchor=north,
+  text=black,
+  rotate=0.0
+]{Per-task distortion vs compression ratio  (n=50 tasks)};
+\end{tikzpicture}

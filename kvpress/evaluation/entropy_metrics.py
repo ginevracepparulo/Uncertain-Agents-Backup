@@ -36,11 +36,23 @@ class SampledOutput:
     surprisal: torch.Tensor  # (n_samples,), nats, -log p(y^(i) | prompt)
     lengths: torch.Tensor  # (n_samples,), generated length per sample (tokens, excl. prompt)
     cache_seq_length: int  # number of KV entries retained after prefill
+    sequences: torch.Tensor  # (n_samples, T_max) int64 sampled token ids; row i is only
+    # valid for its first lengths[i] entries (rows that finished
+    # early keep decoding, but those tokens are masked out)
 
 
 @dataclass
-class EntropyEstimate:
-    """Plug-in Monte Carlo estimate of sequence-level entropy H(Y | x), in bits."""
+class SequenceKLEstimate:
+    """Monte Carlo estimate of the sequence-level KL(p_full || p_compressed), in bits."""
+
+    KL: float
+    se: float
+    n_samples: int
+
+
+@dataclass
+class SequenceEntropyEstimate:
+    """Monte Carlo estimate of sequence-level entropy H(Y | x), in bits."""
 
     H_hat: float
     se: float
@@ -76,20 +88,20 @@ def compute_sequence_metrics(full: TeacherForcedOutput, compressed: TeacherForce
             "position": range(len(ref)),
             "h_full": h_full.tolist(),
             "h_compressed": h_compressed.tolist(),
-            "delta_h": (h_compressed - h_full).tolist(),
-            "kl_full_compressed": kl_bits(full.log_probs, compressed.log_probs).tolist(),
+            "delta_H": (h_compressed - h_full).tolist(),
+            "kl": kl_bits(full.log_probs, compressed.log_probs).tolist(),
             "ce_full": cross_entropy_bits(full.log_probs, ref).tolist(),
             "ce_compressed": cross_entropy_bits(compressed.log_probs, ref).tolist(),
         }
     )
 
 
-def plugin_entropy_estimate(sample_output: SampledOutput) -> EntropyEstimate:
-    """Turn a SampledOutput into H_hat/se/varentropy, converted from nats to bits."""
+def sequence_entropy_estimate(sample_output: SampledOutput) -> SequenceEntropyEstimate:
+    """Turns a SampledOutput into H_hat/se/varentropy, converted from nats to bits."""
     surprisal_bits = sample_output.surprisal / LOG2
     n = surprisal_bits.shape[0]
     varentropy = surprisal_bits.var(unbiased=True).item()
-    return EntropyEstimate(
+    return SequenceEntropyEstimate(
         H_hat=surprisal_bits.mean().item(),
         se=(varentropy / n) ** 0.5,
         varentropy=varentropy,
@@ -99,7 +111,34 @@ def plugin_entropy_estimate(sample_output: SampledOutput) -> EntropyEstimate:
     )
 
 
-def sequence_confidence(estimate: EntropyEstimate) -> float:
+def sequence_KL_estimate(logp_full: torch.Tensor, logp_compressed: torch.Tensor) -> SequenceKLEstimate:
+    """
+    Monte Carlo estimate of the sequence-level KL divergence, in bits:
+
+        KL(p_f || p_c) = E_{y ~ p_f} [ log p_f(y|x) - log p_c(y|x) ]
+        KL_hat         = (1/N) sum_i [ log p_f(y^(i)|x) - log p_c(y^(i)|x) ],  y^(i) ~ p_f(.|x)
+
+    Both arguments are (n_samples,) *natural-log* sequence log-probabilities of the SAME
+    sequences y^(i), which must have been drawn from p_f: `logp_full` comes from the full
+    config's own sampling pass, `logp_compressed` from re-scoring those very sequences under
+    the compressed press. The compressed model never generates here -- it only scores -- which
+    is why the two configs producing different free-running samples does not matter.
+
+    Unbiased, but high variance: each position contributes a single scalar (the log-prob of the
+    one token that was sampled), discarding the rest of the logit vector, and the log-ratios sum
+    over positions so per-token heavy tails compound across the sequence. KL >= 0 by definition,
+    so a negative estimate means the sample size is too small for the spread.
+    """
+    diff_bits = (logp_full - logp_compressed) / LOG2
+    n = diff_bits.shape[0]
+    return SequenceKLEstimate(
+        KL=diff_bits.mean().item(),
+        se=(diff_bits.var(unbiased=True).item() / n) ** 0.5,
+        n_samples=n,
+    )
+
+
+def sequence_confidence(estimate: SequenceEntropyEstimate) -> float:
     """
     Map a sequence-entropy estimate to a confidence in (0, 1].
 
@@ -117,12 +156,19 @@ def sequence_confidence(estimate: EntropyEstimate) -> float:
 
 
 def compute_ece(
-    confidence, correct, n_bins: int = 5, strategy: str = "quantile"
+    confidence, score, n_bins: int = 5, strategy: str = "quantile"
 ) -> tuple[float, pd.DataFrame]:
     """
     Expected calibration error, plus the per-bin table a reliability diagram needs.
 
-        ECE = sum_b (n_b / N) * |accuracy_b - mean_confidence_b|
+        ECE = sum_b (n_b / N) * |mean_score_b - mean_confidence_b|
+
+    `score` is the benchmark's own per-task quality in [0, 1] (token-F1, ROUGE, ...), used
+    directly rather than thresholded into a 0/1 correctness. The textbook ECE is the special
+    case where `score` happens to be binary, and the arithmetic below is identical either way
+    -- only the reading of a bin changes: "tasks at confidence 0.7 scored 0.7 on average"
+    rather than "70% of tasks at confidence 0.7 were correct". Keeping it continuous avoids
+    an arbitrary cutoff and uses the full resolution of metrics that are rarely 0 or 1.
 
     `strategy="quantile"` puts an equal number of examples in each bin, which is the
     right default at the task counts used here (a few dozen): equal-width bins over
@@ -130,13 +176,13 @@ def compute_ece(
     Pass "uniform" for the classic equal-width bins.
     """
     conf = np.asarray(confidence, dtype=float)
-    corr = np.asarray(correct, dtype=float)
+    corr = np.asarray(score, dtype=float)
     finite = np.isfinite(conf) & np.isfinite(corr)
     conf, corr = conf[finite], corr[finite]
 
     n = conf.size
     if n == 0:
-        return float("nan"), pd.DataFrame(columns=["bin_left", "bin_right", "n", "mean_confidence", "accuracy"])
+        return float("nan"), pd.DataFrame(columns=["bin_left", "bin_right", "n", "mean_confidence", "mean_score"])
 
     if strategy == "quantile":
         edges = np.unique(np.quantile(conf, np.linspace(0.0, 1.0, n_bins + 1)))
@@ -156,15 +202,15 @@ def compute_ece(
         if n_b == 0:
             continue
         mean_conf = float(conf[selected].mean())
-        accuracy = float(corr[selected].mean())
-        ece += (n_b / n) * abs(accuracy - mean_conf)
+        mean_score = float(corr[selected].mean())
+        ece += (n_b / n) * abs(mean_score - mean_conf)
         rows.append(
             {
                 "bin_left": float(edges[b]),
                 "bin_right": float(edges[b + 1]),
                 "n": n_b,
                 "mean_confidence": mean_conf,
-                "accuracy": accuracy,
+                "mean_score": mean_score,
             }
         )
 
