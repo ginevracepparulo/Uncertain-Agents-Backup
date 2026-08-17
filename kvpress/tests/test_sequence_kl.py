@@ -23,7 +23,7 @@ from entropy_analysis import (  # noqa: E402
     run_sampled_task,
     score_sequences_under_press,
 )
-from entropy_metrics import sequence_kl_estimate  # noqa: E402
+from entropy_metrics import sequence_KL_estimate  # noqa: E402
 from kvpress import StreamingLLMPress  # noqa: E402
 
 from tests.fixtures import unit_test_model  # noqa: E402, F401
@@ -56,9 +56,9 @@ def test_self_kl_is_zero(unit_test_model, prompt_ids):  # noqa: F811
     logp = score_sequences_under_press(
         unit_test_model, prompt_ids, sampled.sequences, sampled.lengths, press=None
     )
-    estimate = sequence_kl_estimate(-sampled.surprisal, logp)
+    estimate = sequence_KL_estimate(-sampled.surprisal, logp)
     assert estimate.n_samples == 8
-    assert abs(estimate.kl) < 1e-3
+    assert abs(estimate.KL) < 1e-3
 
 
 def test_sequences_shape_and_length_masking(unit_test_model, prompt_ids):  # noqa: F811

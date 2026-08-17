@@ -29,15 +29,34 @@ Per task, sequence position t (in bits):
   * ce_comp(t)   = -log2 p_comp(o_t)                               surprisal of the gold token, compressed --what is this?
   * excess_ce(t) = ce_comp(t) - ce_full(t)                         extra bits to predict gold (quality drop) --what is this?
 
-Per task aggregated sequence positions t (in bits):
-  * H_full_sum    = mean_t H_full(t)                               mean per-token entropy, full
-  * H_comp_sum    = mean_t H_comp(t)                               mean per-token entropy, compressed
-  * IG_sum        = sum_t IG(t)                                    total extra uncertainty from eviction
-  * KL_sum        = mean_t KL(t)                                   mean distribution shift
-  * ce_full_sum   = mean_t ce_full(t)                              mean surprisal of the gold token, full
-  * ce_comp_sum   = mean_t ce_comp(t)                              mean surprisal of the gold token, compressed
-  * excess_ce_sum = mean_t excess_ce(t)                            mean extra bits to predict gold (quality drop)
-  
+Per task, aggregated over the task's own sequence positions t. BOTH aggregations are computed
+and stored (see `TF_AGGREGATIONS`), distinguished by the `aggregation` column rather than by
+column name, since the across-task stage that follows is mean +- std either way:
+
+  aggregation = "mean_over_positions"  (bits/token) -- the per-position average
+  * h_full / h_comp = mean_t H_full(t) / mean_t H_comp(t)          mean per-token entropy
+  * IG              = mean_t IG(t)                                 mean extra uncertainty from eviction
+  * KL              = mean_t KL(t)                                 mean distribution shift
+  * ce_full/ce_comp = mean_t ce_full(t) / mean_t ce_comp(t)         mean surprisal of the gold token
+  * excess_ce       = mean_t excess_ce(t)                           mean extra bits to predict gold
+
+  aggregation = "sum_over_positions"  (bits/sequence) -- the total along the reference
+  * h_full / h_comp = sum_t H_full(t) / sum_t H_comp(t)             total entropy along the reference
+  * IG              = sum_t IG(t)                                  total extra uncertainty from eviction
+  * KL              = sum_t KL(t)                                  total distribution shift
+  * ce_full/ce_comp = sum_t ce_full(t) / sum_t ce_comp(t)           = -log2 p(O|x), EXACT by chain rule
+  * excess_ce       = sum_t excess_ce(t)                           = log2 [p_full(O|x)/p_comp(O|x)]
+
+  The two are related by sum = T * mean per task (T = reference length), but that identity does
+  NOT survive the across-task average when T varies, so neither block can be reconstructed from
+  the other at the dataset level.
+
+  Caveat on the sums: ce_full/ce_comp/excess_ce sum EXACTLY to sequence quantities (chain rule
+  of probability). h_full/h_comp/KL do not -- the chain rules for sequence entropy and sequence
+  KL need an expectation over prefixes drawn from the model, while these are evaluated along one
+  fixed reference path. Those sums are "total along the reference", never H_seq / KL_seq; the
+  real sequence-level estimands live in the sampled regime below.
+
 Remarks:
 - There is no benchmark accuracy here: teacher-forcing never generates an answer, so its
 quality metric is `excess_ce` (how much harder the gold answer is to predict once the
@@ -79,24 +98,52 @@ Per (task, kv_caching, ratio):
   ===================================  outputs (both regimes)  ======================
 Each run writes two CSVs into the output dir:
 
-  * comparison.csv  
-      teacher_forced: one row per (task, compression ratio) --> per task aggregated sequence positions t (in bits)
-        H_full_sum, H_comp_sum, IG_sum, KL_sum, ce_full_sum, ce_comp_sum, excess_ce_sum
-      
-      sampled: one row per (task, compression ratio): full vs compressed side by side             
+  * comparison.csv
+      teacher_forced: one row per (task, compression ratio, aggregation) -- long, both position
+        aggregations stacked and keyed by the `aggregation` column (in bits)
+        regime, task_id, ratio, aggregation, h_full, h_comp, IG, KL, ce_full, ce_comp, excess_ce
+
+      sampled: one row per (task, compression ratio): full vs compressed side by side
         H_seq_full, H_seq_comp, IG_seq, KL_seq, confidence_full/confidence_comp, primary_score_full/primary_score_comp
-  
+
   * per_config.csv  -- one row per (task, kv_caching=full/@compression ratio, compression ratio)  [ratio = NA for full]
       teacher_forced: H_mean, ce_mean
       sampled:        H_seq, H_seq_se, confidence, KL_seq, KL_seq_se, predicted_answer, gold, primary_score, correct
- 
 
-plus a dataset-level summary.csv and diagnostic plots.
+  * summary.csv  -- dataset-level, one row per compression ratio
+      teacher_forced: long as well, one row per (ratio, aggregation); the metric columns are named
+        for the across-task stage (`IG_mean`/`IG_std` = mean/std over tasks) in BOTH blocks, so
+        the two stack with identical columns and only `aggregation` distinguishes them.
+      sampled:        one row per kv_caching config, with accuracy, ECE and the benchmark metrics.
+
+plus diagnostic plots. Teacher-forced figures are written once per aggregation: the mean variant
+keeps the unsuffixed filenames, the sum variant appends `_sum_over_positions` (TF_STEM_SUFFIX).
+
+`replot_teacher_forced.py` / `replot_sampled.py` rebuild all of the above for a finished run from
+records.csv / per_config.csv respectively, without a model or a GPU.
 
 Useful Dataset:
 MultiFieldQA-en (avg context window: 4,559 tokens)
 HotpotQA (avg context window: 9,151 tokens)
 TREC (avg context window: 5,177 tokens)
+
+Testing
+-----
+cd /Users/ginevracepparulo/Documents/KTH/Uncertain_Agents/Caching/kvpress
+SMOKE=/private/tmp/claude-501/-Users-ginevracepparulo-Documents-KTH-Uncertain-Agents-Caching/2c100e97-de6e-4a59-9f31-2b5634b2bbfa/scratchpad/smoke
+rm -rf "$SMOKE"
+
+for tf in True False; do for dec in "" "--decoding_compression_interval 1"; do
+  .venv/bin/python evaluation/entropy_analysis.py \
+    --teacher_forcing $tf $dec \
+    --dataset longbench --data_dir trec --n_samples 2 \
+    --compression_ratios "[0.0, 0.5]" \
+    --n_mc_samples 4 --mc_batch_size 2 \
+    --max_new_tokens 8 --max_reference_tokens 8 \
+    --compute_bertscore False --device mps \
+    --output_dir "$SMOKE/run" || echo "FAILED: tf=$tf dec=$dec"
+done; done
+ls -R "$SMOKE"
 
 Usage
 -----
@@ -146,7 +193,7 @@ python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
     --teacher_forcing False \
     --dataset longbench --data_dir trec --n_samples 150 --n_mc_samples 50 \
-    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 4 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
     --mc_batch_size 8 \
     --device cuda \
     --output_dir "$OUT" \
@@ -236,6 +283,9 @@ from entropy_metrics import (
     sequence_KL_estimate,
 )
 from entropy_plots import (
+    DISTORTION_COMBINED_STEM,
+    DISTORTION_PANEL_STEMS,
+    KL_SPREAD_STEM,
     plot_accuracy_vs_ratio,
     plot_cache_composition,
     plot_dataset_summary,
@@ -253,6 +303,25 @@ from kvpress.presses.base_press import BasePress
 logger = logging.getLogger(__name__)
 
 METRIC_COLUMNS = ["h_full", "h_comp", "IG", "KL", "ce_full", "ce_comp"]
+
+# --------------------------------------------------------------------------------------
+# Teacher-forced position aggregation.
+#
+# The teacher-forced records are per (task, ratio, position), and collapsing them takes two
+# stages: stage 1 over the positions within one task, stage 2 over tasks. Only stage 1 is a
+# choice -- `mean` gives bits/token, `sum` gives bits/sequence -- and stage 2 is always
+# mean +- std, so the *column names* never encode the stage-1 choice (`IG_mean` is "mean
+# across tasks" in both cases) and an `aggregation` column carries it instead. That is what
+# lets both aggregations stack into one long CSV with identical columns.
+# --------------------------------------------------------------------------------------
+TF_AGGREGATIONS = ("mean", "sum")  # order fixes both CSV block order and plot order
+TF_POSITION_AGGREGATION = {"mean": "mean_over_positions", "sum": "sum_over_positions"}
+TF_UNITS = {"mean": "bits/token", "sum": "bits/sequence"}
+# "" for the mean variant keeps every pre-existing figure filename byte-identical.
+TF_STEM_SUFFIX = {"mean": "", "sum": "_sum_over_positions"}
+# Entropy columns are capitalised in the dataset-level summary (H, not h); applied while
+# flattening the agg MultiIndex so the mean and std spellings can never drift apart.
+CANONICAL_METRIC_NAMES = {"h_full": "H_full", "h_comp": "H_comp"}
 
 # Gold-answer column per DATASET_REGISTRY entry: unlike context/question (uniformly
 # named across every benchmark's HF push), the gold-answer column isn't standardized.
@@ -1030,52 +1099,70 @@ def build_sampled_comparison(per_config: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame.from_records(rows)
 
 
-def aggregate_teacher_forced_task_metrics(records: pd.DataFrame) -> pd.DataFrame:
+def _check_aggregation(how: str) -> None:
     """
-    Dataset-level H (Y | x) estimate per compression ratio.
+    Reject anything but `TF_AGGREGATIONS`.
 
-    Each task is first averaged over its own positions (giving one bits/token
-    number per task), then averaged across tasks, so long and short reference
-    sequences count equally as one sample each.
+    A silent pass-through would let `groupby.agg("median")` produce a frame whose unit is
+    neither bits/token nor bits/sequence, yet which is labelled with one of them by
+    `TF_UNITS` downstream -- a mislabelled axis rather than a traceback.
     """
-    per_task = records.groupby(["ratio", "task_id"])[METRIC_COLUMNS].mean().reset_index()
+    if how not in TF_AGGREGATIONS:
+        raise ValueError(f"how must be one of {TF_AGGREGATIONS}, got {how!r}")
+
+
+def aggregate_teacher_forced_task_metrics(records: pd.DataFrame, how: str = "mean") -> pd.DataFrame:
+    """
+    Dataset-level per-ratio summary of the teacher-forced metrics.
+
+    Two aggregation stages. Stage 1 collapses each task's own reference positions by `how`;
+    stage 2 always takes mean +- std across tasks, so long and short reference sequences count
+    equally as one sample each (a flat mean over all rows would let long references dominate).
+    Only stage 1 varies, so the columns are named for stage 2 (`IG_mean` is the mean across
+    tasks in both cases) and the `aggregation` column records the stage-1 choice.
+
+        how="mean" -> bits/token,    the per-position average along the reference
+        how="sum"  -> bits/sequence, the total accumulated along the reference
+
+    On the sum variant's semantics: summing `ce_full`/`ce_comp` (and hence `excess_ce`) over
+    positions is *exact* -- by the chain rule sum_t -log2 p(o_t | o_<t, x) = -log2 p(O | x),
+    the total surprisal of the reference. Summing `h_full`/`h_comp`/`KL` is not: the chain
+    rules for sequence entropy and sequence KL both need an expectation over prefixes drawn
+    from the model, whereas these are evaluated along one fixed reference path. Those sums are
+    "total along the reference" and must never be labelled H_seq / KL_seq -- see the sampled
+    regime's `sequence_entropy_estimate` / `sequence_KL_estimate` for the real sequence-level
+    estimands.
+    """
+    _check_aggregation(how)
+    per_task = records.groupby(["ratio", "task_id"])[METRIC_COLUMNS].agg(how).reset_index()
     summary = per_task.groupby("ratio")[METRIC_COLUMNS].agg(["mean", "std"])
-    summary.columns = ["_".join(c) for c in summary.columns]
+    summary.columns = [f"{CANONICAL_METRIC_NAMES.get(m, m)}_{stat}" for m, stat in summary.columns]
     summary = summary.reset_index()
     summary["excess_ce"] = summary["ce_comp_mean"] - summary["ce_full_mean"]
     summary["n_tasks"] = per_task.groupby("ratio").size().values
-    return summary.rename(
-        columns={
-            "h_full_mean": "H_full_per_token",
-            "h_comp_mean": "H_comp_per_token",
-            "IG_mean": "IG",
-            "KL_mean": "mean_KL",
-        }
-    )
+    summary.insert(1, "aggregation", TF_POSITION_AGGREGATION[how])
+    return summary
 
-
-def build_tf_comparison(per_position: pd.DataFrame) -> pd.DataFrame:
+def build_tf_comparison(per_position: pd.DataFrame, how: str = "mean") -> pd.DataFrame:
     """
     Collapse the teacher-forced per-position records to one comparison row per (task, ratio):
-    full vs compressed metrics averaged over positions, plus excess_ce. (The internal
-    per-position columns still use the historical `*_comp` names -> `*_comp` here.)
+    full vs compressed metrics aggregated over that task's positions by `how`, plus excess_ce.
+
+    `how="mean"` is bits/token, `how="sum"` bits/sequence; the `aggregation` column records
+    which, so both can stack into one long CSV. See `aggregate_teacher_forced_task_metrics`
+    for why the sum is exact for `ce_*`/`excess_ce` but only a total-along-the-reference for
+    `h_*`/`KL`. (The internal per-position columns use the `*_comp` names -> `*_comp` here.)
     """
+    _check_aggregation(how)
     agg = (
         per_position.groupby(["task_id", "ratio"])
-        .agg(
-            h_full=("h_full", "mean"),
-            h_comp=("h_comp", "mean"),
-            IG=("IG", "mean"),
-            KL=("KL", "mean"),
-            ce_full=("ce_full", "mean"),
-            ce_comp=("ce_comp", "mean"),
-        )
+        .agg(**{metric: (metric, how) for metric in METRIC_COLUMNS})
         .reset_index()
     )
     agg["excess_ce"] = agg["ce_comp"] - agg["ce_full"]
     agg.insert(0, "regime", "teacher_forced")
+    agg.insert(3, "aggregation", TF_POSITION_AGGREGATION[how])
     return agg
-
 
 def build_tf_per_config(per_position: pd.DataFrame) -> pd.DataFrame:
     """
@@ -1099,6 +1186,68 @@ def build_tf_per_config(per_position: pd.DataFrame) -> pd.DataFrame:
     out = pd.concat([full, compressed], ignore_index=True)
     out.insert(0, "regime", "teacher_forced")
     return out[["regime", "task_id", "kv_caching", "ratio", "h_mean", "ce_mean"]]
+
+
+def write_teacher_forced_outputs(
+    records: pd.DataFrame, out_dir: Path, ratios: list[float], n_sink: int
+) -> None:
+    """
+    Derive every teacher-forced artifact from the per-position `records` frame: the three CSVs
+    and all figures. Everything here is pure pandas/matplotlib, so `replot_teacher_forced.py`
+    reuses it to rebuild a finished run's outputs from `records.csv` without a model or a GPU.
+
+    Both position aggregations in `TF_AGGREGATIONS` are emitted. `comparison.csv` and
+    `summary.csv` stack their blocks into one long file each, keyed by the `aggregation`
+    column; the figures are written twice, the sum variant taking `TF_STEM_SUFFIX` so it
+    cannot overwrite the mean variant's filenames.
+    """
+    build_tf_per_config(records).to_csv(out_dir / "per_config.csv", index=False)
+
+    # cache_seq_length_full is the cache after an uncompressed prefill, i.e. the prompt length.
+    context_length = records.groupby("task_id")["cache_seq_length_full"].first()
+
+    comparisons, summaries = {}, {}
+    for how in TF_AGGREGATIONS:
+        comparisons[how] = build_tf_comparison(records, how=how)
+        summaries[how] = aggregate_teacher_forced_task_metrics(records, how=how)
+
+    pd.concat(comparisons.values(), ignore_index=True).to_csv(out_dir / "comparison.csv", index=False)
+    summary = pd.concat(summaries.values(), ignore_index=True)
+    summary.to_csv(out_dir / "summary.csv", index=False)
+    logger.info(f"Dataset-level summary:\n{summary.to_string(index=False)}")
+
+    for how in TF_AGGREGATIONS:
+        unit, suffix = TF_UNITS[how], TF_STEM_SUFFIX[how]
+        per_task = comparisons[how]
+        per_task["context_length"] = per_task["task_id"].map(context_length)
+        stage_1 = "mean" if how == "mean" else "total"
+        plot_dataset_summary(
+            per_task, summaries[how], out_dir,
+            unit=unit,
+            spread_ylabel=f"per-task {stage_1} KL ({unit})",
+            combined_stem=f"{DISTORTION_COMBINED_STEM}{suffix}",
+            panel_stems=tuple(f"{stem}{suffix}" for stem in DISTORTION_PANEL_STEMS),
+            spread_stem=f"{KL_SPREAD_STEM}{suffix}",
+        )
+        plot_distortion_traces(
+            per_task, out_dir,
+            delta_column="IG", KL_column="KL",
+            delta_ylabel=f"IG = H_comp - H_full ({unit})",
+            KL_ylabel=f"KL(p_full || p_comp) ({unit})",
+            stem=f"distortion_traces_per_task{suffix}",
+            panel_stems=(
+                f"information_gain_traces_per_task{suffix}",
+                f"KL_traces_per_task{suffix}",
+            ),
+        )
+
+    # Per-position figures; independent of how positions are aggregated, so written once.
+    for ratio in ratios:
+        if ratio == 0.0:
+            continue
+        plot_position_traces(records, ratio, out_dir)
+        plot_cache_composition(records, ratio, n_sink, out_dir)
+    logger.info(f"Saved per_config.csv, comparison.csv, summary.csv and plots to {out_dir}")
 
 
 # --------------------------------------------------------------------------------------
@@ -1585,32 +1734,7 @@ def main(
             return
 
         records = pd.read_csv(records_path, dtype={"task_id": str})
-
-        build_tf_per_config(records).to_csv(out_dir / "per_config.csv", index=False)
-        build_tf_comparison(records).to_csv(out_dir / "comparison.csv", index=False)
-
-        summary = aggregate_teacher_forced_task_metrics(records)
-        summary.to_csv(out_dir / "summary.csv", index=False)
-        logger.info(f"Dataset-level summary:\n{summary.to_string(index=False)}")
-
-        per_task = records.groupby(["ratio", "task_id"])[METRIC_COLUMNS].mean().reset_index()
-        plot_dataset_summary(per_task, summary, out_dir)
-        # cache_seq_length_full is the cache after an uncompressed prefill, i.e. the prompt length.
-        per_task["context_length"] = per_task["task_id"].map(
-            records.groupby("task_id")["cache_seq_length_full"].first()
-        )
-        plot_distortion_traces(
-            per_task, out_dir,
-            delta_column="IG", KL_column="KL",
-            delta_ylabel="IG = H_comp - H_full (bits/token)",
-            KL_ylabel="KL(p_full || p_comp) (bits/token)",
-        )
-        for ratio in ratios:
-            if ratio == 0.0:
-                continue
-            plot_position_traces(records, ratio, out_dir)
-            plot_cache_composition(records, ratio, n_sink, out_dir)
-        logger.info(f"Saved per_config.csv, comparison.csv, summary and plots to {out_dir}")
+        write_teacher_forced_outputs(records, out_dir, ratios, n_sink)
 
 
 if __name__ == "__main__":

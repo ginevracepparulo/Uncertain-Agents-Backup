@@ -20,15 +20,14 @@ cd "$PROJ/Caching/kvpress"
 # fail immediately rather than burning 5 hours on CPU
 python -c "import torch; assert torch.cuda.is_available(), 'NO GPU VISIBLE'; print(torch.__version__, torch.cuda.get_device_name(0))"
 
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/tf_decode_250mc
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/tf_decode
 mkdir -p "$OUT"
 
 python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
-    --teacher_forcing False \
-    --dataset longbench --data_dir trec --n_samples 50 --n_mc_samples 250 \
-    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]"\
-    --mc_batch_size 8 \
+    --teacher_forcing True \
+    --dataset longbench --data_dir trec --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
     --device cuda \
     --output_dir "$OUT" \
     2>&1 | tee "$OUT/my_log.log"

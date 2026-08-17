@@ -26,8 +26,8 @@ mkdir -p "$OUT"
 python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
     --teacher_forcing False \
-    --dataset longbench --data_dir trec --n_samples 50 --n_mc_samples 50 \
-    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]"\
+    --dataset longbench --data_dir trec --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]"  --decoding_compression_interval 1 \
     --mc_batch_size 8 \
     --device cuda \
     --output_dir "$OUT" \

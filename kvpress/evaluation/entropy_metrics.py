@@ -68,7 +68,7 @@ def entropy_bits(log_probs: torch.Tensor) -> torch.Tensor:
     return -(probs * log_probs).sum(dim=-1) / LOG2
 
 
-def kl_bits(log_probs: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
+def KL_bits(log_probs: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
     """KL(p || q) per row, in bits."""
     p = log_probs.exp()
     return (p * (log_probs - log_q)).sum(dim=-1) / LOG2
@@ -82,16 +82,16 @@ def cross_entropy_bits(log_probs: torch.Tensor, token_ids: torch.Tensor) -> torc
 def compute_sequence_metrics(full: TeacherForcedOutput, compressed: TeacherForcedOutput, reference_ids: torch.Tensor) -> pd.DataFrame:
     ref = reference_ids[0].to(full.log_probs.device)
     h_full = entropy_bits(full.log_probs)
-    h_compressed = entropy_bits(compressed.log_probs)
+    h_comp = entropy_bits(compressed.log_probs)
     return pd.DataFrame(
         {
             "position": range(len(ref)),
             "h_full": h_full.tolist(),
-            "h_compressed": h_compressed.tolist(),
-            "delta_H": (h_compressed - h_full).tolist(),
-            "kl": kl_bits(full.log_probs, compressed.log_probs).tolist(),
+            "h_comp": h_comp.tolist(),
+            "IG": (h_comp - h_full).tolist(),
+            "KL": KL_bits(full.log_probs, compressed.log_probs).tolist(),
             "ce_full": cross_entropy_bits(full.log_probs, ref).tolist(),
-            "ce_compressed": cross_entropy_bits(compressed.log_probs, ref).tolist(),
+            "ce_comp": cross_entropy_bits(compressed.log_probs, ref).tolist(),
         }
     )
 

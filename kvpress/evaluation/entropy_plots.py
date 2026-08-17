@@ -150,6 +150,7 @@ def _save(fig, output_dir: Path, stem: str) -> None:
 
 DISTORTION_COMBINED_STEM = "distortion_vs_compression_ratio"
 DISTORTION_PANEL_STEMS = ("information_gain_vs_compression_ratio", "KL_vs_compression_ratio")
+KL_SPREAD_STEM = "KL_spread_across_tasks"
 
 
 def _draw_summary_panel(ax, x, mean, std, ylabel: str, title: str) -> None:
@@ -187,15 +188,35 @@ def _render_summary_panels(panels: list[tuple], output_dir: Path, combined: str,
         plt.close(fig)
 
 
-def plot_dataset_summary(per_task: pd.DataFrame, summary: pd.DataFrame, output_dir: Path) -> None:
+def plot_dataset_summary(
+    per_task: pd.DataFrame,
+    summary: pd.DataFrame,
+    output_dir: Path,
+    *,
+    unit: str = "bits/token",
+    spread_ylabel: str = "per-task mean KL (bits/token)",
+    combined_stem: str = DISTORTION_COMBINED_STEM,
+    panel_stems: tuple[str, str] = DISTORTION_PANEL_STEMS,
+    spread_stem: str = KL_SPREAD_STEM,
+) -> None:
+    """
+    Dataset-level IG and KL against compression ratio, plus the spread of KL across tasks.
+
+    The teacher-forced regime calls this once per position-aggregation (mean over positions ->
+    bits/token, sum -> bits/sequence), so `unit` and the stems are parameters: the defaults
+    reproduce the mean variant's labels and filenames exactly, and the sum variant passes
+    suffixed stems so it cannot overwrite them. `spread_ylabel` is separate from `unit` rather
+    than derived, because its wording names the *position* aggregation ("per-task mean KL")
+    which `unit` alone cannot convey.
+    """
     _render_summary_panels(
         [
-            (summary["ratio"], summary["IG"], summary["IG_std"],
-             "IG = H_compressed - H_full (bits/token)", "Information gain (mean ± std over tasks)"),
-            (summary["ratio"], summary["mean_KL"], summary["KL_std"],
-             "KL(p_full || p_compressed) (bits/token)", "Distribution shift (mean ± std over tasks)"),
+            (summary["ratio"], summary["IG_mean"], summary["IG_std"],
+             f"IG = H_compressed - H_full ({unit})", "Information gain (mean ± std over tasks)"),
+            (summary["ratio"], summary["KL_mean"], summary["KL_std"],
+             f"KL(p_full || p_compressed) ({unit})", "Distribution shift (mean ± std over tasks)"),
         ],
-        output_dir, DISTORTION_COMBINED_STEM, DISTORTION_PANEL_STEMS,
+        output_dir, combined_stem, panel_stems,
     )
 
     ratios = sorted(per_task["ratio"].unique())
@@ -205,10 +226,10 @@ def plot_dataset_summary(per_task: pd.DataFrame, summary: pd.DataFrame, output_d
         tick_labels=[str(r) for r in ratios],
     )
     ax.set_xlabel("Compression ratio")
-    ax.set_ylabel("per-task mean KL (bits/token)")
+    ax.set_ylabel(spread_ylabel)
     ax.set_title("Spread of KL divergence across tasks")
     fig.tight_layout()
-    _save(fig, output_dir, "KL_spread_across_tasks")
+    _save(fig, output_dir, spread_stem)
     plt.close(fig)
 
 
@@ -263,7 +284,7 @@ def plot_cache_composition(records: pd.DataFrame, ratio: float, n_sink: int, out
     fig, ax = plt.subplots(figsize=FIGSIZE)
     for i, row in enumerate(subset.itertuples()):
         prompt_length = row.cache_seq_length_full
-        n_kept = row.cache_seq_length_compressed
+        n_kept = row.cache_seq_length_comp
         n_pruned = prompt_length - n_kept
         sink_end = min(n_sink, prompt_length)
         evicted_end = sink_end + n_pruned
@@ -328,7 +349,7 @@ def plot_sampled_distortion(comparison: pd.DataFrame, output_dir: Path) -> None:
     ax.set_ylabel("per-task sequence KL (bits/sequence)")
     ax.set_title("Spread of KL divergence across tasks")
     fig.tight_layout()
-    _save(fig, output_dir, "KL_spread_across_tasks")
+    _save(fig, output_dir, KL_SPREAD_STEM)
     plt.close(fig)
 
 
@@ -341,6 +362,8 @@ def plot_distortion_traces(
     KL_ylabel: str,
     stem: str = "distortion_traces_per_task",
     context_column: Optional[str] = "context_length",
+    *,
+    panel_stems: tuple[str, str] = ("information_gain_traces_per_task", "KL_traces_per_task"),
 ) -> None:
     """
     Information gain and distribution shift against compression ratio, one line per task.
@@ -356,6 +379,11 @@ def plot_distortion_traces(
 
     Works for both regimes; the caller supplies the column names and units (teacher-forced is
     bits/token over reference positions, sampled is bits/sequence over Monte Carlo draws).
+
+    `panel_stems` names the two standalone figures, alongside `stem` for the combined one. It
+    has to be a parameter, not a literal: a caller that plots the same quantities twice (the
+    teacher-forced regime does, once per position-aggregation) would otherwise overwrite these
+    two files even after passing a distinct `stem`.
     """
     missing = [c for c in (delta_column, KL_column) if c not in per_task]
     if per_task.empty or missing or per_task[KL_column].isna().all():
@@ -363,8 +391,8 @@ def plot_distortion_traces(
 
     _render_trace_figure(
         per_task, output_dir, stem,
-        panels=[(delta_column, delta_ylabel, "Information gain", "information_gain_traces_per_task"),
-                (KL_column, KL_ylabel, "Distribution shift", "KL_traces_per_task")],
+        panels=[(delta_column, delta_ylabel, "Information gain", panel_stems[0]),
+                (KL_column, KL_ylabel, "Distribution shift", panel_stems[1])],
         suptitle="Per-task distortion vs compression ratio",
         zero_line=True,
         context_column=context_column,
