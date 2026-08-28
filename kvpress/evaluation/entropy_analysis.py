@@ -149,10 +149,11 @@ Usage
 -----
 from ssh
 # 1) teacher-forced, prefill-only eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/tf_prefill
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/tf_prefill
 mkdir -p "$OUT"
 python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing True \
     --dataset longbench --data_dir trec --n_samples 150 \
     --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" \
@@ -161,10 +162,11 @@ python evaluation/entropy_analysis.py \
     2>&1 | tee "$OUT/my_log.log"
 
 # 2) teacher-forced, decode-time eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/tf_decode
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/tf_decode
 mkdir -p "$OUT"
 python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing True \
     --dataset longbench --data_dir trec --n_samples 150 \
     --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
@@ -174,10 +176,11 @@ python evaluation/entropy_analysis.py \
 
     
 # 3) sampled, prefill-only eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/sampled_prefill
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/sampled_prefill
 mkdir -p "$OUT"
 python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing False \
     --dataset longbench --data_dir trec --n_samples 150 --n_mc_samples 50 \
     --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]"\
@@ -187,10 +190,11 @@ python evaluation/entropy_analysis.py \
     2>&1 | tee "$OUT/my_log.log"
 
 # 4) sampled, decode-time eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/sampled_decode
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/sampled_decode
 mkdir -p "$OUT"
 python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing False \
     --dataset longbench --data_dir trec --n_samples 150 --n_mc_samples 50 \
     --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
@@ -201,22 +205,24 @@ python evaluation/entropy_analysis.py \
 ------------------------------------------------------------------------    
 from local
 # 1) teacher-forced, prefill-only eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/hotpotqa/tf_prefill
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/tf_prefill
 mkdir -p "$OUT"
 nohup .venv/bin/python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing True \
-    --dataset longbench --data_dir hotpotqa --n_samples 150 \
+    --dataset longbench --data_dir trec --n_samples 150 \
     --compression_ratios "[0.0, 0.25, 0.75]" \
     --device mps \
     --output_dir "$OUT" \
     2>&1 | tee "$OUT/my_log.log"
 
 # 2) teacher-forced, decode-time eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/tf_decode
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/tf_decode
 mkdir -p "$OUT"
 nohup .venv/bin/python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing True \
     --dataset longbench --data_dir trec --n_samples 150 \
     --compression_ratios "[0.0, 0.25, 0.75]" --decoding_compression_interval 1 \
@@ -226,10 +232,11 @@ nohup .venv/bin/python evaluation/entropy_analysis.py \
 
     
 # 3) sampled, prefill-only eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/sampled_prefill
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/sampled_prefill
 mkdir -p "$OUT"
 nohup .venv/bin/python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing False \
     --dataset longbench --data_dir trec --n_samples 150 --n_mc_samples 50 \
     --compression_ratios "[0.0, 0.25, 0.75]" \
@@ -238,10 +245,11 @@ nohup .venv/bin/python evaluation/entropy_analysis.py \
     2>&1 | tee "$OUT/my_log.log"
 
 # 4) sampled, decode-time eviction
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/sampled_decode
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/sampled_decode
 mkdir -p "$OUT"
 nohup .venv/bin/python evaluation/entropy_analysis.py \
     --model unsloth/Llama-3.1-8B-Instruct \
+    --press_name streaming_llm \
     --teacher_forcing False \
     --dataset longbench --data_dir trec --n_samples 150 --n_mc_samples 50 \
     --compression_ratios "[0.0, 0.25, 0.75]" --decoding_compression_interval 4 \
@@ -255,6 +263,7 @@ python evaluation/entropy_analysis.py --dataset_path ./my_tasks.jsonl
 """
 
 import contextlib
+import copy
 import itertools
 import json
 import logging
@@ -263,14 +272,14 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import pandas as pd
 import torch
 from fire import Fire
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache, PreTrainedModel, PreTrainedTokenizer
 
-from evaluate_registry import DATASET_REGISTRY, SCORER_REGISTRY
+from evaluate_registry import DATASET_REGISTRY, PRESS_REGISTRY, SCORER_REGISTRY
 
 from entropy_metrics import (
     SampledOutput,
@@ -297,12 +306,25 @@ from entropy_plots import (
     plot_sampled_distortion,
     set_format,
 )
-from kvpress import DecodingPress, PrefillDecodingPress, StreamingLLMPress
+from kvpress import DecodingPress, PrefillDecodingPress
 from kvpress.presses.base_press import BasePress
 
 logger = logging.getLogger(__name__)
 
 METRIC_COLUMNS = ["h_full", "h_comp", "IG", "KL", "ce_full", "ce_comp"]
+
+# PRESS_REGISTRY names verified to work in this script's prefill + teacher-forcing / sampling
+# pattern. Deliberately not the whole registry: the decoding_*/cam_*/merging_* entries are
+# already DecodingPress-shaped and would be double-wrapped, observed_attention needs eager
+# attention with output_attentions=True (load_model_and_tokenizer sets neither), and kvzip
+# compresses on context-manager exit, so the decode_per_token loop would score an
+# uncompressed cache.
+SUPPORTED_PRESSES = ("streaming_llm", "random", "snapkv", "knorm", "tova", "expected_attention", "keydiff")
+
+# Presses that score from a window of decode-time hidden states rather than from the keys alone;
+# maps press name -> the attribute holding the number of steps it needs. Everything else scores
+# per-token and runs fine with an empty buffer. See `build_comp_press`.
+HIDDEN_STATE_WINDOW_ATTRS = {"snapkv": "window_size", "expected_attention": "n_sink"}
 
 # --------------------------------------------------------------------------------------
 # Teacher-forced position aggregation.
@@ -413,6 +435,76 @@ def load_tasks(
         raw = {k: v for k, v in row.items() if k not in ("context", "question")}
         tasks.append(Task(task_id=str(i), context=row["context"], question=row["question"], answer=answer, raw=raw))
     return tasks
+
+
+# Generation budget used when neither --max_new_tokens nor a dataset `max_new_tokens` column
+# is available: ad-hoc --context/--question tasks, local --dataset_path files, and any
+# benchmark whose HF push omits the column.
+DEFAULT_MAX_NEW_TOKENS = 64
+
+
+def _column_max_new_tokens(task: Task) -> Optional[int]:
+    """`task`'s dataset-supplied generation budget, or None if it has no usable one."""
+    try:
+        # CSV/JSONL round-trips can hand this back as a float or a string ("84.0"), so parse
+        # via float; a missing key raises TypeError and NaN raises ValueError on the int().
+        value = int(float((task.raw or {}).get("max_new_tokens")))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def resolve_max_new_tokens(override: Optional[int], max_reference_tokens: int, tasks: list[Task]) -> int:
+    """
+    args:
+        override: explicit --max_new_tokens, or None to take the dataset's own budget
+        max_reference_tokens: the teacher-forced reference clamp, checked against the result
+        tasks: the loaded tasks; the budget is read off the first one
+    outputs:
+        the generation budget to use for every task in this run
+
+    One budget for the whole run, resolved from the first task's `max_new_tokens` column:
+    an explicit --max_new_tokens wins, else that column, else DEFAULT_MAX_NEW_TOKENS.
+
+    The benchmarks under DATASET_REGISTRY ship a `max_new_tokens` column their authors picked
+    for the task's expected output format -- LongBench gives 32 to short-span QA ("only give
+    me the answer") and 512 to the summarisation tasks ("write a one-page summary"), and our
+    HF push adds 20 tokens of headroom on top. That is a far better budget than one global
+    number, which would truncate the summaries or waste decode steps on the span tasks.
+    `load_tasks` keeps every column other than context/question in `Task.raw`, so it is here.
+
+    Reading only the first row mirrors `evaluate.py` (`self.config.max_new_tokens or
+    df_group["max_new_tokens"].iloc[0]`), and is exact for the registered benchmarks: each
+    one's HF push assigns the column as a scalar over the whole frame, so it is constant
+    within a --data_dir, and a run covers one --data_dir. Only a hand-built --dataset_path
+    file can break that, so non-uniformity is warned about rather than silently averaged --
+    `evaluate.py` leaves the same invariant unstated and unchecked.
+    """
+    if override is not None:
+        resolved, source = override, "--max_new_tokens"
+    else:
+        column_values = {v for v in (_column_max_new_tokens(task) for task in tasks) if v is not None}
+        if len(column_values) > 1:
+            logger.warning(
+                f"tasks disagree on the max_new_tokens column ({sorted(column_values)}); "
+                f"using the first task's value for the whole run"
+            )
+        first = _column_max_new_tokens(tasks[0]) if tasks else None
+        if first is not None:
+            resolved, source = first, "dataset max_new_tokens column"
+        else:
+            resolved, source = DEFAULT_MAX_NEW_TOKENS, "built-in default"
+
+    logger.info(f"max_new_tokens={resolved} (from {source})")
+    if resolved < max_reference_tokens:
+        # Only bites on the teacher-forced no-gold branch, where the reference is *generated*
+        # under max_new_tokens: there the effective clamp is this budget, not the larger
+        # max_reference_tokens the caller asked for.
+        logger.warning(
+            f"max_new_tokens={resolved} < max_reference_tokens={max_reference_tokens}: generated "
+            f"references (tasks with no gold answer) will be capped at {resolved} tokens"
+        )
+    return resolved
 
 
 def build_prompt_ids(
@@ -589,10 +681,96 @@ def pad_sequences_to(sequences: torch.Tensor, width: int) -> torch.Tensor:
     return torch.cat([sequences, pad], dim=1)
 
 
+@dataclass
+class PrefilledPrompt:
+    """
+    A prompt prefilled *once* under one press, ready to be replayed by many decode passes.
+
+    Every Monte Carlo draw shares the same prompt -- rows only diverge at the first
+    `torch.multinomial` call, which happens *after* prefill -- and a transformer never mixes
+    information across the batch dimension. So prefilling an `n_samples`-row batch of identical
+    prompts computes `n_samples` bit-identical copies of one KV cache and pays the full
+    batch x prompt_length FLOPs for every one of them. Since a press is a deterministic function
+    of the prompt (StreamingLLM's sink+recency rule is purely positional; a scorer press reads
+    only prompt content, which is identical across rows), the *compressed* cache is identical
+    across rows too.
+
+    Prefilling at batch 1 and broadcasting the cache is therefore exact, not an approximation.
+    It also lets one prefill serve every pass that shares a (task, press): the sampling pass,
+    the greedy pass, and -- for a compressed config -- the KL scoring pass, which re-scores
+    `full`'s draws under this same press.
+
+    attrs:
+        cache: batch-1 DynamicCache after prefill, i.e. *after* the press has evicted
+        next_logits: (1, vocab) logits at the last prompt position, where every decode starts
+        cache_seq_length: surviving cache length after eviction (reported as `cache_seq_length`)
+        prompt_length: pre-eviction prompt length; RoPE positions continue from here, since
+            pruned tokens keep the positions they were encoded with
+    """
+
+    cache: DynamicCache
+    next_logits: torch.Tensor
+    cache_seq_length: int
+    prompt_length: int
+
+
+@torch.no_grad()
+def prefill_prompt(
+    model: PreTrainedModel, prompt_ids: torch.Tensor, press: Optional[BasePress]
+) -> PrefilledPrompt:
+    """
+    Run the prompt through the model once at batch 1 under `press`. See `PrefilledPrompt`.
+
+    `logits_to_keep=1`: only the last position's logits are ever read, and projecting every
+    prompt position to vocab-size logits would dominate the prefill's memory.
+    """
+    cache = DynamicCache()
+    with press(model) if press is not None else contextlib.nullcontext():
+        outputs = model(input_ids=prompt_ids, past_key_values=cache, logits_to_keep=1)
+    return PrefilledPrompt(
+        cache=cache,
+        next_logits=outputs.logits[:, -1, :],
+        cache_seq_length=cache.get_seq_length(),
+        prompt_length=prompt_ids.shape[1],
+    )
+
+
+def replicate_prefill(prefilled: PrefilledPrompt, n_rows: int) -> tuple[DynamicCache, torch.Tensor]:
+    """
+    Broadcast a batch-1 prefilled cache into an `n_rows` cache for one decode pass.
+
+    The copy is what makes a `PrefilledPrompt` reusable: decoding mutates its cache (each step
+    appends a token, and a `DecodingPress` prunes it), so every pass needs its own. Only the
+    batch-1 tensors are cloned -- cheap next to the prefill they replace -- and the batch
+    dimension is then a stride-0 view, materialised by the first decode step's concatenation.
+    Peak memory is therefore what an un-shared prefill already cost at this batch size, so
+    `mc_batch_size` keeps its meaning.
+    """
+    cache = copy.deepcopy(prefilled.cache)
+    for layer in cache.layers:
+        layer.keys = layer.keys.expand(n_rows, -1, -1, -1)
+        layer.values = layer.values.expand(n_rows, -1, -1, -1)
+    return cache, prefilled.next_logits.expand(n_rows, -1)
+
+
+def as_prefilled(
+    model: PreTrainedModel, prompt: Union[torch.Tensor, PrefilledPrompt], press: Optional[BasePress]
+) -> PrefilledPrompt:
+    """
+    Accept either raw `(1, prompt_len)` token ids or an already-prefilled prompt.
+
+    Callers that hold a prompt across several passes (`process_task_sampled`) prefill once and
+    pass the `PrefilledPrompt`; ad-hoc callers and tests keep passing token ids and prefill here.
+    """
+    if isinstance(prompt, PrefilledPrompt):
+        return prompt
+    return prefill_prompt(model, prompt, press)
+
+
 @torch.no_grad()
 def run_sampled_task(
     model: PreTrainedModel,
-    prompt_ids: torch.Tensor,
+    prompt: Union[torch.Tensor, PrefilledPrompt],
     press: Optional[BasePress],
     n_samples: int,
     max_new_tokens: int,
@@ -602,7 +780,8 @@ def run_sampled_task(
     """
     args:
         model: PreTrainedModel, the LM to run
-        prompt_ids: (1, prompt_len) tensor of token ids to prefill the cache with
+        prompt: (1, prompt_len) tensor of token ids, or a `PrefilledPrompt` already prefilled
+            under `press` -- the prompt is prefilled once either way and shared by every chunk
         press: optional BasePress to apply during prefill (and optionally decoding)
         n_samples: number of continuations to sample from p(. | prompt_ids)
         max_new_tokens: maximum number of tokens to generate per sample
@@ -630,14 +809,15 @@ def run_sampled_task(
     is no batched fast path here, so a press that also evicts during decoding always
     gets the chance to affect later samples.
 
-    Position ids continue from `prompt_ids.shape[1]` for the same reason as in
+    Position ids continue from the prompt length for the same reason as in
     `run_teacher_forced_task`: pruned tokens keep the RoPE position they were encoded with, so
     generated tokens must be numbered as if no eviction had happened.
     """
+    prefilled = as_prefilled(model, prompt, press)
     chunks = resolve_mc_chunks(n_samples, mc_batch_size)
     if len(chunks) > 1:
         outs = [
-            sample_chunk(model, prompt_ids, press, size, max_new_tokens, eos_token_id) for size in chunks
+            sample_chunk(model, prefilled, press, size, max_new_tokens, eos_token_id) for size in chunks
         ]
         width = max(o.sequences.shape[1] for o in outs)
         return SampledOutput(
@@ -646,13 +826,13 @@ def run_sampled_task(
             cache_seq_length=outs[0].cache_seq_length,  # same prompt and press in every chunk
             sequences=torch.cat([pad_sequences_to(o.sequences, width) for o in outs], dim=0),
         )
-    return sample_chunk(model, prompt_ids, press, n_samples, max_new_tokens, eos_token_id)
+    return sample_chunk(model, prefilled, press, n_samples, max_new_tokens, eos_token_id)
 
 
 @torch.no_grad()
 def sample_chunk(
     model: PreTrainedModel,
-    prompt_ids: torch.Tensor,
+    prefilled: PrefilledPrompt,
     press: Optional[BasePress],
     n_samples: int,
     max_new_tokens: int,
@@ -660,18 +840,15 @@ def sample_chunk(
 ) -> SampledOutput:
     """One ancestral-sampling pass over `n_samples` rows. See `run_sampled_task` for the method."""
     device = model.device
-    prompt_length = prompt_ids.shape[1]
-    prompt = prompt_ids.expand(n_samples, -1).contiguous()
-    cache = DynamicCache()
+    prompt_length = prefilled.prompt_length
+    cache_seq_length = prefilled.cache_seq_length
+    # The prompt is prefilled once by the caller and broadcast here; the rows are identical
+    # until the first draw below, so prefilling them separately would be redundant work.
+    # `next_logits` is (n_samples, vocab) copies of one row -- `torch.multinomial` still draws
+    # each row independently, so the n draws are i.i.d. from p(.|x) as the estimator requires.
+    cache, next_logits = replicate_prefill(prefilled, n_samples)
 
     with press(model) if press is not None else contextlib.nullcontext():
-        # logits_to_keep=1: the LM head would otherwise project every prompt
-        # position to vocab-size logits for the whole n_samples batch, even
-        # though only the last position's logits are ever used below.
-        outputs = model(input_ids=prompt, past_key_values=cache, logits_to_keep=1)
-        cache_seq_length = cache.get_seq_length()
-        next_logits = outputs.logits[:, -1, :]
-
         seq_logp = torch.zeros(n_samples, device=device)
         lengths = torch.zeros(n_samples, dtype=torch.long, device=device)
         active = torch.ones(n_samples, dtype=torch.bool, device=device)
@@ -708,7 +885,7 @@ def sample_chunk(
 @torch.no_grad()
 def score_sequences_under_press(
     model: PreTrainedModel,
-    prompt_ids: torch.Tensor,
+    prompt: Union[torch.Tensor, PrefilledPrompt],
     sequences: torch.Tensor,
     lengths: torch.Tensor,
     press: Optional[BasePress],
@@ -717,7 +894,9 @@ def score_sequences_under_press(
     """
     args:
         model: PreTrainedModel, the LM to run
-        prompt_ids: (1, prompt_len) tensor of token ids to prefill the cache with
+        prompt: (1, prompt_len) tensor of token ids, or a `PrefilledPrompt` already prefilled
+            under `press` -- typically the very one the compressed sampling pass used, since
+            this scores the same prompt under the same press
         sequences: (n_samples, T_max) token ids to score -- drawn from ANOTHER config
         lengths: (n_samples,) true length of each row of `sequences` (later entries ignored)
         press: optional BasePress whose eviction policy the scoring runs under
@@ -743,6 +922,7 @@ def score_sequences_under_press(
     Rows that finished early are masked out via `lengths` rather than truncated: the batch
     decodes in lockstep, exactly as it did while sampling.
     """
+    prefilled = as_prefilled(model, prompt, press)
     chunks = resolve_mc_chunks(sequences.shape[0], mc_batch_size)
     if len(chunks) > 1:
         parts, start = [], 0
@@ -751,16 +931,16 @@ def score_sequences_under_press(
             # Trim each chunk to its own longest row: columns at or past every row's length
             # contribute nothing, so scoring them would just be wasted decode steps.
             width = int(lengths[rows].max().item())
-            parts.append(score_chunk(model, prompt_ids, sequences[rows, :width], lengths[rows], press))
+            parts.append(score_chunk(model, prefilled, sequences[rows, :width], lengths[rows], press))
             start += size
         return torch.cat(parts)
-    return score_chunk(model, prompt_ids, sequences, lengths, press)
+    return score_chunk(model, prefilled, sequences, lengths, press)
 
 
 @torch.no_grad()
 def score_chunk(
     model: PreTrainedModel,
-    prompt_ids: torch.Tensor,
+    prefilled: PrefilledPrompt,
     sequences: torch.Tensor,
     lengths: torch.Tensor,
     press: Optional[BasePress],
@@ -768,14 +948,10 @@ def score_chunk(
     """One forced-token scoring pass over `sequences`. See `score_sequences_under_press`."""
     device = model.device
     n_samples, n_steps = sequences.shape
-    prompt_length = prompt_ids.shape[1]
-    prompt = prompt_ids.expand(n_samples, -1).contiguous()
-    cache = DynamicCache()
+    prompt_length = prefilled.prompt_length
+    cache, next_logits = replicate_prefill(prefilled, n_samples)
 
     with press(model) if press is not None else contextlib.nullcontext():
-        outputs = model(input_ids=prompt, past_key_values=cache, logits_to_keep=1)
-        next_logits = outputs.logits[:, -1, :]
-
         seq_logp = torch.zeros(n_samples, device=device)
         for t in range(n_steps):
             log_probs = torch.log_softmax(next_logits.float(), dim=-1)
@@ -798,7 +974,7 @@ def score_chunk(
 @torch.no_grad()
 def greedy_generate_output(
     model: PreTrainedModel,
-    prompt_ids: torch.Tensor,
+    prompt: Union[torch.Tensor, PrefilledPrompt],
     press: Optional[BasePress],
     max_new_tokens: int,
     eos_token_id: int,
@@ -806,7 +982,8 @@ def greedy_generate_output(
     """
     args:
         model: PreTrainedModel, the LM to run
-        prompt_ids: (1, prompt_len) tensor of token ids to prefill the cache with
+        prompt: (1, prompt_len) tensor of token ids, or a `PrefilledPrompt` already prefilled
+            under `press` -- greedy decoding starts from the same cache the sampling pass used
         press: optional BasePress to apply during prefill (and optionally decoding)
         max_new_tokens: maximum number of tokens to generate
         eos_token_id: token id of the EOS token, used to stop generation early
@@ -826,14 +1003,12 @@ def greedy_generate_output(
     encoded with. Only the token choice differs: argmax instead of `torch.multinomial`.
     """
     device = model.device
-    prompt_length = prompt_ids.shape[1]
-    cache = DynamicCache()
+    prefilled = as_prefilled(model, prompt, press)
+    prompt_length = prefilled.prompt_length
+    cache, next_logits = replicate_prefill(prefilled, 1)
     tokens: list[int] = []
 
     with press(model) if press is not None else contextlib.nullcontext():
-        outputs = model(input_ids=prompt_ids, past_key_values=cache, logits_to_keep=1)
-        next_logits = outputs.logits[:, -1, :]
-
         for i in range(max_new_tokens):
             next_token = next_logits.argmax(dim=-1)  # (1,)
             if next_token.item() == eos_token_id:
@@ -847,49 +1022,123 @@ def greedy_generate_output(
     return torch.tensor(tokens, dtype=torch.long)
 
 
+def scoring_press(press: BasePress) -> BasePress:
+    """
+    The press that actually holds the scoring hyper-parameters.
+
+    Some registry entries wrap a ScorerPress in an adapter that only reshapes the eviction
+    decision -- `expected_attention` is `AdaKVPress(ExpectedAttentionPress(...))`. `AdaKVPress`
+    proxies `compression_ratio` to the inner press, but not `n_sink` or `window_size`, so
+    reading those off the wrapper silently returns nothing. Unwrap one level to reach them.
+    """
+    return getattr(press, "press", press)
+
+
+def press_instance(press_name: str, ratio: float, n_sink: int) -> BasePress:
+    """
+    A fresh `press_name` press from PRESS_REGISTRY, set to `ratio`.
+
+    The registry holds shared singletons (`evaluate.py` mutates them in place, which is safe
+    there because it builds one press per process). Here `build_comp_press` runs once per ratio
+    per task and needs two independent instances, so every lookup is deepcopied: mutating in
+    place would leak one ratio into the next task and into the DecodingPress base.
+
+    `n_sink` is applied only where the press has it -- StreamingLLMPress and
+    ExpectedAttentionPress do, RandomPress and SnapKVPress do not -- mirroring the `hasattr`
+    dispatch in `evaluate.py`'s `_setup_press`, but resolved through `scoring_press` so it
+    reaches the inner press of a wrapper.
+    """
+    press = copy.deepcopy(PRESS_REGISTRY[press_name])
+    press.compression_ratio = ratio  # AdaKVPress proxies this setter to the press it wraps
+    scorer = scoring_press(press)
+    if hasattr(scorer, "n_sink"):
+        scorer.n_sink = n_sink
+    return press
+
+
 def build_comp_press(
-    ratio: float, n_sink: int, prompt_length: int, decoding_compression_interval: Optional[int],
-    decoding_target_size: Optional[int],
+    press_name: str, ratio: float, n_sink: int, prompt_length: int,
+    decoding_compression_interval: Optional[int], decoding_target_size: Optional[int],
 ) -> tuple[BasePress, bool]:
     """
-    args: 
-        ratio: compression ratio for StreamingLLMPress (0.0 = no eviction, 1.0 = max eviction)
-        n_sink: number of sink tokens for StreamingLLMPress
+    args:
+        press_name: which eviction policy to use, a key of SUPPORTED_PRESSES
+        ratio: compression ratio for the press (0.0 = no eviction, 1.0 = max eviction)
+        n_sink: number of sink tokens, for the presses that keep sinks (ignored by the others)
         prompt_length: length of the prompt (used to compute decoding_target_size if not provided)
         decoding_compression_interval: if set, apply a DecodingPress every this many decode steps
-        decoding_target_size: if set, target size for DecodingPress; if None, computed from prompt_length 
+        decoding_target_size: if set, target size for DecodingPress; if None, computed from prompt_length
         and ratio
     outputs:
-        BasePress to use for the "compressed" Task, and a boolean indicating whether decode-time 
-        eviction is exercised 
+        BasePress to use for the "compressed" Task, and a boolean indicating whether decode-time
+        eviction is exercised
         (i.e., whether `run_teacher_forced_task` should loop per token)
 
     Build the press used for the "compressed" Task, and whether it needs the
     per-token decode loop in `run_teacher_forced_task` to actually exercise decode-time eviction.
 
     If `decoding_compression_interval` is None, this is the prefill-only
-    behaviour: a bare StreamingLLMPress, pruned once during prefill and never again.
+    behaviour: a bare press, pruned once during prefill and never again.
 
-    If `decoding_compression_interval` is set, StreamingLLMPress is also wrapped in
-    a `DecodingPress` (via `PrefillDecodingPress`), which re-applies StreamingLLM's
-    sink+recency scoring rule every `decoding_compression_interval` decode steps,
-    pruning the cache back down to `decoding_target_size` tokens each time.
+    If `decoding_compression_interval` is set, the press is also wrapped in a `DecodingPress`
+    (via `PrefillDecodingPress`), which re-applies the same scoring rule every
+    `decoding_compression_interval` decode steps, pruning the cache back down to
+    `decoding_target_size` tokens each time.
+
+    `hidden_states_buffer_size` is sized from the press rather than fixed at 0. `DecodingPress`
+    empties the buffer every step when it is 0, so `compress` sees a single step's hidden
+    states: fine for the key-only scorers (streaming_llm, knorm, random, keydiff, and tova,
+    which falls back to a 1-step window), but the presses in HIDDEN_STATE_WINDOW_ATTRS score
+    over a window and need it kept. SnapKV asserts on a too-short window; ExpectedAttention
+    slices it away entirely and silently estimates its query statistics from an empty tensor.
+    The buffer alone is not enough either -- compression fires once `compression_interval`
+    steps have elapsed, so the interval must clear the window too, which is checked below.
 
     ratio=0.0 always disables eviction entirely, at both prefill and decode, even
     if decode-time compression is requested: `target_size = prompt_length` would
     otherwise still let the cache get trimmed once it grows past the *original*
     prompt length during decoding.
     """
-    prefill_press = StreamingLLMPress(compression_ratio=ratio, n_sink=n_sink)
+    prefill_press = press_instance(press_name, ratio, n_sink)
     if decoding_compression_interval is None or ratio == 0.0:
         return prefill_press, False
 
-    target_size = decoding_target_size or max(n_sink + 1, int(prompt_length * (1 - ratio)))
+    # Only the sink-keeping presses need the floor; for the others it is just 1.
+    target_size = decoding_target_size or max(
+        getattr(prefill_press, "n_sink", 0) + 1, int(prompt_length * (1 - ratio))
+    )
+
+    window_attr = HIDDEN_STATE_WINDOW_ATTRS.get(press_name)
+    window = getattr(scoring_press(prefill_press), window_attr, 0) if window_attr else 0
+    if window and decoding_compression_interval <= window:
+        raise ValueError(
+            f"--press_name {press_name} scores over a {window}-step hidden-state window, so "
+            f"--decoding_compression_interval must exceed {window} (got "
+            f"{decoding_compression_interval}); below that the press compresses before enough "
+            f"decode steps have accumulated"
+        )
+
+    if press_name == "expected_attention" and getattr(scoring_press(prefill_press), "use_covariance", False):
+        # It estimates a query mean and covariance from the buffered steps left after dropping
+        # the first n_sink. The check above only rules out the empty-tensor case (a divide by
+        # h.shape[1] == 0, which yields NaN scores silently); a covariance this far from
+        # full rank is still a poor estimate, so flag how many samples it actually gets.
+        n_query_samples = decoding_compression_interval - window
+        if n_query_samples < 32:
+            logger.warning(
+                f"expected_attention estimates its query covariance from {n_query_samples} decode "
+                f"step(s) (--decoding_compression_interval {decoding_compression_interval} minus "
+                f"n_sink={window}); raise the interval for a better-conditioned estimate"
+            )
+
     decode_press = DecodingPress(
-        base_press=StreamingLLMPress(compression_ratio=0.0, n_sink=n_sink),
+        base_press=press_instance(press_name, 0.0, n_sink),
         compression_interval=decoding_compression_interval,
         target_size=target_size,
-        hidden_states_buffer_size=0,
+        # Keep every step accumulated since the last compression. `window + 1` would technically
+        # clear SnapKV's assert, but the buffer is a retention cap, so it would also pin
+        # ExpectedAttention to a single query sample no matter how large the interval is.
+        hidden_states_buffer_size=decoding_compression_interval if window else 0,
     )
     return PrefillDecodingPress(prefilling_press=prefill_press, decoding_press=decode_press), True
 
@@ -899,6 +1148,7 @@ def process_teacher_forced_task(
     tokenizer: PreTrainedTokenizer,
     task: Task,
     compression_ratios: list[float],
+    press_name: str,
     n_sink: int,
     max_new_tokens: int,
     max_reference_tokens: int,
@@ -934,7 +1184,7 @@ def process_teacher_forced_task(
         if ratio == 0.0:  # identical to full attention; skip
             continue
         press, decode_per_token = build_comp_press(
-            ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
+            press_name, ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
         )
         compressed = run_teacher_forced_task(model, prompt_ids, reference_ids, press=press, decode_per_token=decode_per_token)
         df = compute_sequence_metrics(full, compressed, reference_ids)
@@ -952,6 +1202,7 @@ def process_task_sampled(
     tokenizer: PreTrainedTokenizer,
     task: Task,
     compression_ratios: list[float],
+    press_name: str,
     n_sink: int,
     n_mc_samples: int,
     max_new_tokens: int,
@@ -996,15 +1247,16 @@ def process_task_sampled(
         config_label: str,
         ratio: float,
         press: Optional[BasePress],
+        prefilled: PrefilledPrompt,
         sampled: Optional[SampledOutput] = None,
         KL_estimate: Optional[SequenceKLEstimate] = None,
     ) -> dict:
         if sampled is None:
             sampled = run_sampled_task(
-                model, prompt_ids, press, n_mc_samples, max_new_tokens, eos_token_id, mc_batch_size
+                model, prefilled, press, n_mc_samples, max_new_tokens, eos_token_id, mc_batch_size
             )
         estimate = sequence_entropy_estimate(sampled)
-        generated_ids = greedy_generate_output(model, prompt_ids, press, max_new_tokens, eos_token_id)
+        generated_ids = greedy_generate_output(model, prefilled, press, max_new_tokens, eos_token_id)
         predicted_answer = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
         return {
             "regime": "sampled",
@@ -1027,22 +1279,30 @@ def process_task_sampled(
             "predicted_answer": predicted_answer,
         }
 
+    # One prefill per config, shared by every pass that runs under it (see `PrefilledPrompt`):
+    # for `full` that is the sampling and greedy passes, and for each compressed ratio the
+    # sampling, greedy *and* KL scoring passes -- the last re-scores `full`'s draws under this
+    # very press, so it starts from exactly this cache.
+    full_prefilled = prefill_prompt(model, prompt_ids, None)
+
     # `full` first, and its draws kept: they are the y^(i) ~ p_full the KL estimator needs.
     full_sampled = run_sampled_task(
-        model, prompt_ids, None, n_mc_samples, max_new_tokens, eos_token_id, mc_batch_size
+        model, full_prefilled, None, n_mc_samples, max_new_tokens, eos_token_id, mc_batch_size
     )
-    rows = [config_row("full", "full", float("nan"), None, sampled=full_sampled)]
+    rows = [config_row("full", "full", float("nan"), None, full_prefilled, sampled=full_sampled)]
+    del full_prefilled  # its cache is dead once `full`'s passes are done; free it before the sweep
 
     for ratio in compression_ratios:
         if ratio == 0.0:  # identical to full attention; skip
             continue
         press, _ = build_comp_press(
-            ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
+            press_name, ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
         )
+        prefilled = prefill_prompt(model, prompt_ids, press)
         KL_estimate = None
         if compute_sequence_KL:
             logp_comp = score_sequences_under_press(
-                model, prompt_ids, full_sampled.sequences, full_sampled.lengths, press, mc_batch_size
+                model, prefilled, full_sampled.sequences, full_sampled.lengths, press, mc_batch_size
             )
             KL_estimate = sequence_KL_estimate(-full_sampled.surprisal, logp_comp)
             if KL_estimate.KL < 0:
@@ -1051,7 +1311,10 @@ def process_task_sampled(
                     f"N={KL_estimate.n_samples} (se={KL_estimate.se:.3f}). KL is non-negative by "
                     "definition, so this estimate is variance-dominated -- do not trust its magnitude."
                 )
-        rows.append(config_row("compressed", f"compressed@{ratio}", ratio, press, KL_estimate=KL_estimate))
+        rows.append(
+            config_row("compressed", f"compressed@{ratio}", ratio, press, prefilled, KL_estimate=KL_estimate)
+        )
+        del prefilled  # don't hold this ratio's cache while the next ratio prefills
 
     return pd.DataFrame.from_records(rows)
 
@@ -1189,7 +1452,8 @@ def build_tf_per_config(per_position: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_teacher_forced_outputs(
-    records: pd.DataFrame, out_dir: Path, ratios: list[float], n_sink: int
+    records: pd.DataFrame, out_dir: Path, ratios: list[float], n_sink: int,
+    press_name: str = "streaming_llm",
 ) -> None:
     """
     Derive every teacher-forced artifact from the per-position `records` frame: the three CSVs
@@ -1200,6 +1464,10 @@ def write_teacher_forced_outputs(
     `summary.csv` stack their blocks into one long file each, keyed by the `aggregation`
     column; the figures are written twice, the sum variant taking `TF_STEM_SUFFIX` so it
     cannot overwrite the mean variant's filenames.
+
+    `press_name` only gates the cache-composition figure (see below); every other artifact is
+    press-agnostic. It defaults to streaming_llm so replots of pre-`--press_name` runs, which
+    were all StreamingLLM, keep drawing it.
     """
     build_tf_per_config(records).to_csv(out_dir / "per_config.csv", index=False)
 
@@ -1246,7 +1514,11 @@ def write_teacher_forced_outputs(
         if ratio == 0.0:
             continue
         plot_position_traces(records, ratio, out_dir)
-        plot_cache_composition(records, ratio, n_sink, out_dir)
+        # The sink / evicted-middle / recent-window bars only describe StreamingLLM's contiguous
+        # eviction pattern. SnapKV, Random and the rest evict scattered positions, so the same
+        # figure would assert a cache structure the run does not have.
+        if press_name == "streaming_llm":
+            plot_cache_composition(records, ratio, n_sink, out_dir)
     logger.info(f"Saved per_config.csv, comparison.csv, summary.csv and plots to {out_dir}")
 
 
@@ -1498,7 +1770,7 @@ def add_folder_log_handler(out_dir: Path, piped_log_name: str = "my_log.log") ->
 
 
 def main(
-    model: str = "Qwen/Qwen2.5-0.5B-Instruct",
+    model: str = "Qwen/Qwen2.5-7B-Instruct",
     context: Optional[str] = None,
     question: Optional[str] = None,
     answer: Optional[str] = None,
@@ -1508,9 +1780,10 @@ def main(
     dataset_path: Optional[str] = None,
     n_samples: int = 5,
     compression_ratios: str = "[0.0, 0.25, 0.5, 0.75]",
+    press_name: str = "streaming_llm",
     n_sink: int = 4,
-    max_new_tokens: int = 64,
-    max_reference_tokens: int = 48,
+    max_new_tokens: Optional[int] = None,
+    max_reference_tokens: int = 256,
     max_context_length: Optional[int] = None,
     decoding_compression_interval: Optional[int] = None,
     decoding_target_size: Optional[int] = None,
@@ -1554,6 +1827,13 @@ def main(
     utilisation, not FLOPs, and does not change any per-sample quantity; it does change the
     RNG stream, so chunked runs are not bit-reproducible against unchunked ones.
 
+    `press_name` picks the eviction policy from `SUPPORTED_PRESSES` (a vetted subset of
+    `PRESS_REGISTRY`); the ratio sweep, both regimes and every metric are unchanged by it.
+    `n_sink` only applies to the presses that keep sink tokens (streaming_llm,
+    expected_attention) and is ignored by the rest. Note that `records.csv` resume keys on
+    `task_id` alone, so a second run with a different `press_name` must use a different
+    `output_dir` or it will resume the first press's rows.
+
     `fig_format` picks the file format for every figure (png / svg / pdf); the figure size and
     type size are the same either way.
     """
@@ -1563,6 +1843,10 @@ def main(
     # Validated up front: the plots are the last thing this writes, and an unsupported format
     # should not surface after the GPU work is already done.
     set_format(fig_format)
+    # Same reasoning: fail before the model loads rather than at the first compressed ratio.
+    assert press_name in SUPPORTED_PRESSES, (
+        f"--press_name must be one of {SUPPORTED_PRESSES}, got {press_name!r}"
+    )
 
     ratios = eval(compression_ratios) if isinstance(compression_ratios, str) else list(compression_ratios)
     mode_suffix = "decode" if decoding_compression_interval is not None else "prefill"
@@ -1600,12 +1884,13 @@ def main(
         logger.info(f"Resuming: {len(completed)} task(s) already in {records_path.name}, {len(tasks)} remaining")
 
     model_, tokenizer = load_model_and_tokenizer(model, device)
-
+    max_new_tokens = resolve_max_new_tokens(max_new_tokens, max_reference_tokens, tasks)
     if not teacher_forcing:
         # ---- sampled regime: entropy H(Y|x) + benchmark accuracy + calibration ----
         for task in tasks:
             df = process_task_sampled(
-                model_, tokenizer, task, ratios, n_sink, n_mc_samples, max_new_tokens, max_context_length,
+                model_, tokenizer, task, ratios, press_name, n_sink, n_mc_samples, max_new_tokens,
+                max_context_length,
                 decoding_compression_interval, decoding_target_size, compute_sequence_KL, mc_batch_size,
             )
             df.to_csv(records_path, mode="a", header=not records_path.exists(), index=False)
@@ -1723,7 +2008,8 @@ def main(
     elif teacher_forcing:
         for task in tasks:
             df = process_teacher_forced_task(
-                model_, tokenizer, task, ratios, n_sink, max_new_tokens, max_reference_tokens, max_context_length,
+                model_, tokenizer, task, ratios, press_name, n_sink, max_new_tokens, max_reference_tokens,
+                max_context_length,
                 decoding_compression_interval, decoding_target_size,
             )
             if df is not None:
@@ -1734,7 +2020,7 @@ def main(
             return
 
         records = pd.read_csv(records_path, dtype={"task_id": str})
-        write_teacher_forced_outputs(records, out_dir, ratios, n_sink)
+        write_teacher_forced_outputs(records, out_dir, ratios, n_sink, press_name)
 
 
 if __name__ == "__main__":

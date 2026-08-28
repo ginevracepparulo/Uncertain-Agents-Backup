@@ -53,9 +53,11 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_COLUMNS = ["primary_score", "H_seq", "confidence", "greedy_length", "KL_seq"]
 
-# Results directories written before the kl -> KL / delta_H -> IG rename still carry the old
-# spellings on disk. Renaming on load (rather than migrating the CSVs) keeps those runs
-# replottable without rewriting results that are already the record of a finished experiment.
+# Results directories written before the kl -> KL / delta_H -> IG rename, or before the
+# sampled regime's *_bits columns were renamed to say which estimand they are (the sequence
+# ones), still carry the old spellings on disk. Renaming on load (rather than migrating the
+# CSVs) keeps those runs replottable without rewriting results that are already the record of
+# a finished experiment.
 LEGACY_COLUMNS = {
     "kl": "KL",
     "kl_seq": "KL_seq",
@@ -64,6 +66,9 @@ LEGACY_COLUMNS = {
     "delta_H_seq": "IG_seq",
     "h_compressed": "h_comp",
     "ce_compressed": "ce_comp",
+    "H_bits": "H_seq",
+    "se_bits": "H_seq_se",
+    "varentropy_bits": "varentropy_seq",
 }
 
 
@@ -129,7 +134,7 @@ def main(
     results_dir: str,
     n_ece_bins: int = 5,
     ece_bin_strategy: str = "quantile",
-    fig_format: str = "png",
+    fig_format: str = "pdf",
     tikz: bool = False,
 ) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -166,8 +171,8 @@ def main(
     plot_distortion_traces(
         comparison, out_dir,
         delta_column="IG_seq", KL_column="KL_seq",
-        delta_ylabel="I(Y;X_res) = Ĥ(Y|X_comp) - Ĥ(Y|X_full) (bits/sequence)",
-        KL_ylabel="KL(p_full || p_compressed) (bits/sequence)",
+        delta_ylabel="IG = H_comp - H_full (bits/sequence)",
+        KL_ylabel="KL(p_full || p_comp) (bits/sequence)",
     )
     written = f".{fig_format}" + (" and .tex" if tikz else "")
     logger.info(f"Rewrote comparison.csv, summary.csv and all {written} plots in {out_dir}")

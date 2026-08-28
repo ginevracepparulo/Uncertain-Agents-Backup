@@ -22,8 +22,9 @@ width from `\\textwidth` at compile time, which is the reason to emit it at all.
 """
 
 import math
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -132,7 +133,10 @@ def _save(fig, output_dir: Path, stem: str) -> None:
     `point meta` range, and `fig.suptitle` lands as a node. The one lossy case is `ax.boxplot`
     (`KL_spread_across_tasks`): matplotlib hands over loose Line2D segments, so the box and
     whiskers are emitted as literal `\\addplot` paths rather than a pgfplots `boxplot`. It renders
-    correctly but cannot be restyled from the LaTeX side.
+    correctly but cannot be restyled from the LaTeX side. The grouped bars of
+    `_draw_quality_bar_panel` come over as `ybar` plots, but check the `bar_label` annotations on a
+    real run before quoting the .tex: they are loose Text artists rather than part of the bar
+    container, so tikzplotlib does not turn them into `nodes near coords`.
 
     Compiling the output needs `\\usepackage{pgfplots}` and `\\usepgfplotslibrary{groupplots}`.
     """
@@ -391,8 +395,8 @@ def plot_distortion_traces(
 
     _render_trace_figure(
         per_task, output_dir, stem,
-        panels=[(delta_column, delta_ylabel, "Information gain", panel_stems[0]),
-                (KL_column, KL_ylabel, "Distribution shift", panel_stems[1])],
+        panels=[TracePanel(delta_column, delta_ylabel, "Information gain", panel_stems[0]),
+                TracePanel(KL_column, KL_ylabel, "Distribution shift", panel_stems[1])],
         suptitle="Per-task distortion vs compression ratio",
         zero_line=True,
         context_column=context_column,
@@ -412,6 +416,13 @@ MAX_TRACE_WIDTH = 2.6
 # non-monotonic lightness and invent category boundaries. It is also colorblind-safe. Untruncated
 # because both ends are already visible against white (unlike Blues, whose first steps vanish).
 CONTEXT_CMAP = plt.get_cmap("viridis")
+
+# Single hue, light -> dark, for encoding a magnitude (never a rainbow: multi-hue ramps imply
+# category boundaries that aren't in the data). Truncated at the pale end because Blues' first
+# steps are near-invisible against a white figure, which would hide exactly the low-scoring
+# tasks the scatter it shades exists to find. Kept beside CONTEXT_CMAP because these two are the
+# module's only colour scales, and because the trace machinery below reaches for it as well.
+SCORE_CMAP = LinearSegmentedColormap.from_list("blues_visible", plt.get_cmap("Blues")(np.linspace(0.25, 1.0, 256)))
 
 
 def _trace_widths(lengths: pd.Series) -> pd.Series:
@@ -437,23 +448,54 @@ def _trace_widths(lengths: pd.Series) -> pd.Series:
 SUBSET_TASKS = 50
 
 
+@dataclass(frozen=True)
+class TracePanel:
+    """
+    One panel of a trace figure: the column it draws, its labels, and the stem of the standalone
+    file it is written to on its own.
+
+    A record rather than the 4-tuple this used to be, because the last two fields are optional
+    switches: a positional tuple mixing four strings, a callable and a flag is unreadable at the
+    call site, and every reader would have to come back here to learn what element five meant.
+
+    `draw` replaces the default per-task trace rendering for this panel alone. It exists so a
+    panel that is not a set of traces -- the binary-score bar panel of `plot_quality_traces` --
+    can ride the subsetting, standalone-figure and saving machinery below instead of growing a
+    parallel copy of it. It takes the same arguments as `_draw_trace_panel` and ignores the ones
+    it has no use for, so `_render_trace_variant` never branches on the kind of panel it holds.
+
+    `context_keyed` says whether the panel actually uses the context-length ramp, and therefore
+    whether the shared colorbar is a key *for it*. A panel aggregating over tasks encodes no
+    per-task context length, and a colorbar spanning it would claim otherwise. Deliberately not
+    derived from `draw is None`: "has a custom drawer" and "is keyed by the context ramp" are
+    different claims that only happen to coincide today.
+    """
+
+    column: str
+    ylabel: str
+    title: str
+    stem: str
+    draw: Optional[Callable] = None
+    context_keyed: bool = True
+
+
 def _render_trace_figure(
     per_task: pd.DataFrame,
     output_dir: Path,
     combined_stem: str,
-    panels: list[tuple[str, str, str]],
+    panels: list[TracePanel],
     suptitle: str,
     zero_line: bool,
     context_column: Optional[str] = None,
 ) -> None:
     """
-    Shared body of the per-task trace figures: one line per task across compression ratios.
-    `panels` is [(column, ylabel, title, standalone_stem), ...].
+    Shared body of the per-task trace figures: one line per task across compression ratios,
+    unless a panel overrides that with its own `TracePanel.draw`.
 
     Each panel is written twice: side by side in the combined figure, and on its own under
-    `standalone_stem`, for the same reason as `_render_summary_panels` -- a single panel goes
-    into a slide at full width without cropping half a two-panel figure. Both come from the
-    same `_draw_trace_panel` call, so they cannot disagree.
+    `TracePanel.stem`, for the same reason as `_render_summary_panels` -- a single panel goes
+    into a slide at full width without cropping half a two-panel figure. Both come from the same
+    drawer on the same frame, so they cannot disagree.
 
     That happens once per task subset: the full set, and a `_<SUBSET_TASKS>tasks` variant
     holding the first N task ids. At 150 traces the figure reads as a density; the subset
@@ -483,14 +525,20 @@ def _render_trace_figure(
         )
 
 
-def _draw_trace_panel(ax, per_task, column, ylabel, title, zero_line, lengths, widths, norm) -> None:
-    """One panel of per-task traces; `lengths`/`widths`/`norm` are None when uncolored."""
+def _draw_trace_panel(ax, per_task, panel: TracePanel, *, zero_line, lengths, widths, norm) -> None:
+    """
+    One panel of per-task traces; `lengths`/`widths`/`norm` are None when uncolored.
+
+    The keyword-only block is the whole style context a panel drawer is given. An alternative
+    drawer (`TracePanel.draw`) takes the same signature and ignores what it cannot use, which is
+    what lets `_render_trace_variant` dispatch without knowing the difference.
+    """
     for task_id, group in per_task.groupby("task_id"):
         group = group.sort_values("ratio")
         # marker as well as line: with a single compression ratio a trace is one point,
         # which a line-only style would render invisible.
         ax.plot(
-            group["ratio"], group[column],
+            group["ratio"], group[panel.column],
             color="tab:blue" if norm is None else CONTEXT_CMAP(norm(lengths.get(task_id))),
             alpha=0.55 if norm is not None else 0.25, marker="o", markersize=3,
             linewidth=BASE_TRACE_WIDTH if widths is None else widths.get(task_id, BASE_TRACE_WIDTH),
@@ -501,8 +549,8 @@ def _draw_trace_panel(ax, per_task, column, ylabel, title, zero_line, lengths, w
     ax.grid(alpha=0.25, linewidth=0.5)
     ax.set_axisbelow(True)
     ax.set_xlabel("Compression ratio")
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_ylabel(panel.ylabel)
+    ax.set_title(panel.title)
 
 
 def _add_context_colorbar(fig, axes_list, norm) -> None:
@@ -515,7 +563,7 @@ def _render_trace_variant(
     output_dir: Path,
     combined_stem: str,
     suffix: str,
-    panels: list[tuple[str, str, str, str]],
+    panels: list[TracePanel],
     suptitle: str,
     zero_line: bool,
     context_column: Optional[str],
@@ -534,25 +582,153 @@ def _render_trace_variant(
 
     n_tasks = per_task["task_id"].nunique()
 
+    # sharex couples the panels' x *limits*, not just their tick labels. A panel with its own
+    # drawer need not be on the ratio axis at all -- the bar panel places its groups at 0..k-1 --
+    # and sharing would then stretch the trace panel's ratio axis across that range and squash
+    # every curve into a corner. Every pre-existing caller draws ratio-axis panels only, so those
+    # figures keep the shared axis they have today.
+    sharex = all(panel.draw is None for panel in panels)
+
     fig, axes = plt.subplots(
-        1, len(panels), figsize=FIGSIZE, sharex=True, squeeze=False, constrained_layout=True
+        1, len(panels), figsize=FIGSIZE, sharex=sharex, squeeze=False, constrained_layout=True
     )
-    for ax, (column, ylabel, title, _) in zip(axes[0], panels):
-        _draw_trace_panel(ax, per_task, column, ylabel, title, zero_line, lengths, widths, norm)
-    if norm is not None:
-        _add_context_colorbar(fig, axes.ravel().tolist(), norm)
+    for ax, panel in zip(axes[0], panels):
+        (panel.draw or _draw_trace_panel)(
+            ax, per_task, panel, zero_line=zero_line, lengths=lengths, widths=widths, norm=norm
+        )
+    # Attached to the keyed axes alone: `fig.colorbar` takes its space from the axes it is handed,
+    # so spanning a panel that carries no context-length encoding would both misdescribe that
+    # panel and shrink it for a scale it does not use. It therefore lands to the right of the
+    # *last* keyed panel, which is why a caller mixing panel kinds puts the unkeyed one first.
+    keyed_axes = [ax for ax, panel in zip(axes[0], panels) if panel.context_keyed]
+    if norm is not None and keyed_axes:
+        _add_context_colorbar(fig, keyed_axes, norm)
     fig.suptitle(f"{suptitle}  (n={n_tasks} tasks)")
     _save(fig, output_dir, f"{combined_stem}{suffix}")
     plt.close(fig)
 
-    for column, ylabel, title, standalone_stem in panels:
+    for panel in panels:
         fig, ax = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
-        _draw_trace_panel(ax, per_task, column, ylabel, title, zero_line, lengths, widths, norm)
-        if norm is not None:
+        (panel.draw or _draw_trace_panel)(
+            ax, per_task, panel, zero_line=zero_line, lengths=lengths, widths=widths, norm=norm
+        )
+        if norm is not None and panel.context_keyed:
             _add_context_colorbar(fig, [ax], norm)
-        ax.set_title(f"{title}  (n={n_tasks} tasks)")
-        _save(fig, output_dir, f"{standalone_stem}{suffix}")
+        ax.set_title(f"{panel.title}  (n={n_tasks} tasks)")
+        _save(fig, output_dir, f"{panel.stem}{suffix}")
         plt.close(fig)
+
+
+# Round-trip slack for a score read back out of a CSV, not a tolerance on the score itself: an
+# F1 of 0.999 is a graded overlap and belongs on the trace panel, not in a "correct" bar.
+BINARY_SCORE_TOL = 1e-9
+
+# Share of each categorical slot the two bars occupy, leaving the rest as the gap between ratios.
+# At 18 pt a much narrower group makes the pair read as two unrelated series rather than a split.
+BAR_GROUP_WIDTH = 0.76
+
+# Separate stems for the binary branch: those files hold a bar chart, and a reader pulling
+# `answer_quality_traces_per_task` out of a results directory would get something other than the
+# traces the name promises. The entropy panel keeps its stem in both branches on purpose -- it is
+# the same figure either way, so anything referencing it stays valid whatever the dataset scores.
+QUALITY_BINARY_COMBINED_STEM = "quality_bars_and_entropy_traces"
+QUALITY_BINARY_PANEL_STEM = "answer_quality_correct_fraction"
+
+
+def _is_binary_score(scores: pd.Series) -> bool:
+    """
+    Whether every score present is exactly 0 or 1 -- i.e. the benchmark's scorer returns a
+    correct/incorrect verdict rather than a graded overlap.
+
+    Decided from the values rather than from a list of dataset or task names, for two reasons.
+    The same code runs over datasets this module has never been told about, and a name list would
+    silently pick the wrong panel for the next one added. And it keeps the two entry points in
+    agreement without either passing a flag: `entropy_analysis.main` hands down the generic metric
+    name "score" for all of LongBench, and `replot_sampled.main` the literal "primary_score", so
+    neither label identifies the underlying scorer anyway.
+
+    The test is strict, which has one known consequence worth stating. LongBench's
+    `classification_score` (trec, lsht) returns `1/len(matches)`, so a single answer naming two
+    candidate classes scores 0.5 and sends the whole run back to the trace branch. That is a
+    degraded figure, not a wrong one. `count_score` (passage_count) and `retrieval_score`
+    (passage_retrieval_en/zh) are strictly 0/1 and always qualify.
+
+    Empty in, False out: the caller has already returned in that case, and False is the branch
+    that changes nothing.
+    """
+    values = scores.dropna().to_numpy(dtype=float)
+    if values.size == 0:
+        return False
+    return bool(np.all(np.minimum(np.abs(values), np.abs(values - 1.0)) <= BINARY_SCORE_TOL))
+
+
+def _draw_quality_bar_panel(ax, per_task, panel: TracePanel, *, zero_line, lengths, widths, norm) -> None:
+    """
+    Fraction of tasks correct and incorrect at each compression ratio, as grouped bars.
+
+    Stands in for the per-task traces when the scorer is binary (LongBench's classification,
+    counting and passage-retrieval tasks answer 0 or 1 per example). A trace panel is unreadable
+    there by construction: every line can only sit on two levels, so the traces overplot into a
+    two-level band showing neither which tasks moved nor how many. The fraction is what that band
+    was actually carrying; the identity of the tasks is still on the entropy panel beside it.
+
+    x is categorical (0..k-1, ratios as tick labels) rather than the numeric ratio. The sweep is
+    not guaranteed evenly spaced -- and ratio 0.0 exists here only because `plot_quality_traces`
+    files full attention there -- so numeric placement would force every bar below the smallest
+    gap and leave slivers next to whitespace. Equal widths also matter in their own right: every
+    bar is a fraction over the same tasks, and a varying width would encode a weight that is not
+    in the data.
+
+    Takes `_draw_trace_panel`'s signature and ignores the style block: `zero_line` has no meaning
+    for a fraction bounded at 0, and the per-task colour and width encoding has nothing to apply
+    to a quantity aggregated over those same tasks.
+    """
+    # Deduplicated per (ratio, task): a results dir that was resumed, or written by two concurrent
+    # jobs, can hold the same task twice, and the mean below is a *fraction of tasks* -- a repeat
+    # would double-weight one task while the two bars still summed to 1 and looked correct.
+    scored = per_task[per_task[panel.column].notna()].drop_duplicates(["ratio", "task_id"])
+    if scored.empty:
+        return
+
+    # A 0/1 score's mean over tasks *is* the fraction correct, so there is nothing to count.
+    # Grouped per ratio rather than divided by the figure's task count: a task missing one config
+    # then drops out of that ratio alone, and both bars come from the same group, so the pair
+    # still sums to exactly 1 instead of quietly falling short.
+    correct = scored.groupby("ratio")[panel.column].mean().sort_index()
+    positions = np.arange(len(correct))
+    width = BAR_GROUP_WIDTH / 2
+
+    # The two ends of SCORE_CMAP, the ramp `plot_entropy_vs_error` shades a benchmark score with,
+    # so dark means score 1 in both figures of the same run. Deliberately not a green/red pair:
+    # that reads as a verdict rather than a score, and the two are indistinguishable to a
+    # red-green colorblind reader where these differ in lightness. The outline bounds the pale
+    # bar, whose own colour is close to the white of the figure.
+    correct_bars = ax.bar(
+        positions - width / 2, correct.to_numpy(), width, label="correct",
+        color=SCORE_CMAP(1.0), edgecolor="black", linewidth=0.5,
+    )
+    ax.bar(
+        positions + width / 2, 1.0 - correct.to_numpy(), width, label="incorrect",
+        color=SCORE_CMAP(0.0), edgecolor="black", linewidth=0.5,
+    )
+    # Only the correct bars are annotated: the other is its complement, so labelling both prints
+    # the same information twice, and at 18 pt the two labels of a group collide once a run
+    # sweeps more than about five ratios.
+    ax.bar_label(correct_bars, fmt="%.2f", padding=2)
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels([f"{ratio:g}" for ratio in correct.index])
+    # Ticks stop at 1.0 because a fraction cannot exceed it, but the limit runs past to give the
+    # legend and the bar labels a lane of their own. Growing the figure instead is not an option
+    # here -- FIGSIZE is fixed -- and a legend laid over a full-height bar hides the number on it.
+    ax.set_yticks(np.arange(0.0, 1.01, 0.2))
+    ax.set_ylim(0.0, 1.28)
+    ax.grid(axis="y", alpha=0.25, linewidth=0.5)
+    ax.set_axisbelow(True)
+    ax.legend(loc="upper center", ncols=2)
+    ax.set_xlabel("Compression ratio")
+    ax.set_ylabel(panel.ylabel)
+    ax.set_title(panel.title)
 
 
 def plot_quality_traces(
@@ -572,6 +748,13 @@ def plot_quality_traces(
     Full attention is placed at ratio 0.0 rather than drawn as a separate baseline: ratio 0.0
     *is* no eviction (which is why the ratio loop skips it as a duplicate of `full`), so every
     trace starts from its own uncompressed value and the drop is read along the line.
+
+    When the benchmark's scorer is binary -- which `_is_binary_score` reads off the scores
+    themselves rather than off the dataset name -- the quality panel becomes a grouped bar chart
+    of the fraction of tasks correct instead, under its own stems. Per-task traces of a 0/1 score
+    are a two-level band that no amount of styling makes readable. The entropy panel stays
+    per-task in both cases: it is a continuous quantity whatever scores the benchmark returns,
+    and in the binary figure it is the half that still carries the identity of the tasks.
 
     Teacher-forced runs never reach this: they generate no answer, so there is no quality axis.
     """
@@ -594,28 +777,39 @@ def plot_quality_traces(
         )
         frame["context_length"] = frame["task_id"].map(full_lengths)
 
+    # Shared by both branches: identical data and identical stem, so the entropy figure of a
+    # binary run and of a continuous one are the same artefact under the same name.
+    entropy_panel = TracePanel("H_seq", "Ĥ(Y|x) (bits/sequence)", "Entropy", "entropy_traces_per_task")
+
+    if _is_binary_score(frame["primary_score"]):
+        _render_trace_figure(
+            frame, output_dir, QUALITY_BINARY_COMBINED_STEM,
+            # Bar panel first: the shared colorbar keys the trace panels only and is drawn to the
+            # right of the last of them, so the trace panel has to be the rightmost one.
+            panels=[TracePanel("primary_score", "fraction of tasks", "Answer quality, 0/1 score",
+                               QUALITY_BINARY_PANEL_STEM,
+                               draw=_draw_quality_bar_panel, context_keyed=False),
+                    entropy_panel],
+            suptitle="Answer quality and per-task entropy vs compression ratio",
+            zero_line=False,
+            context_column="context_length",
+        )
+        return
+
     _render_trace_figure(
         frame, output_dir, stem,
-        panels=[("primary_score", f"{primary_metric} (per task)", "Answer quality",
-                 "answer_quality_traces_per_task"),
-                ("H_seq", "Ĥ(Y|x) (bits/sequence)", "Entropy",
-                 "entropy_traces_per_task")],
+        panels=[TracePanel("primary_score", f"{primary_metric} (per task)", "Answer quality",
+                           "answer_quality_traces_per_task"),
+                entropy_panel],
         suptitle="Per-task answer quality and entropy vs compression ratio",
         zero_line=False,
         context_column="context_length",
     )
 
 
-# Single hue, light -> dark, for encoding a magnitude (never a rainbow: multi-hue ramps imply
-# category boundaries that aren't in the data). Truncated at the pale end because Blues' first
-# steps are near-invisible against a white figure, which would hide exactly the low-scoring
-# tasks this plot exists to find.
-SCORE_CMAP = LinearSegmentedColormap.from_list("blues_visible", plt.get_cmap("Blues")(np.linspace(0.25, 1.0, 256)))
-
-
 def plot_entropy_vs_error(records: pd.DataFrame, output_dir: Path, primary_metric: str) -> None:
     """
-    Sequence entropy vs error, one panel per kv_caching config, one point per task.
+    Sequence entropy vs error, one *figure* per compression ratio, one point per task.
 
     The generation analog of the entropy-error scatter in Meronen et al. (WACV 2024)
     Fig. 2/4: points in the upper *left* are the bad ones -- the model got the answer
@@ -626,49 +820,50 @@ def plot_entropy_vs_error(records: pd.DataFrame, output_dir: Path, primary_metri
     cutoff, so no arbitrary threshold enters the figure. Shade and height encode the same
     quantity (error = 1 - primary_score); the redundancy is deliberate -- it makes the quality
     gradient readable along the entropy axis without drawing a cutoff line that isn't real.
+
+    Each ratio is written as its own file (`entropy_vs_error_ratio_0.25`, ...) so a single
+    config can be dropped into a document at full page width. Full attention is filed as
+    ratio 0.0 for the same reason as in `plot_quality_traces`: ratio 0.0 *is* no eviction, so
+    it is that config's own uncompressed panel rather than a separate one. The axis limits and
+    the colour scale are computed across all ratios and held fixed, which is what lets the
+    separate files still be compared side by side.
     """
-    labels = list(dict.fromkeys(records["config_label"]))
-    n_cols = min(3, len(labels))
-    n_rows = math.ceil(len(labels) / n_cols)
-    fig, axes = plt.subplots(
-        n_rows, n_cols, figsize=FIGSIZE, squeeze=False, sharex=True, sharey=True, constrained_layout=True
-    )
+    frame = records.copy()
+    frame.loc[frame["kv_caching"] == "full", "ratio"] = 0.0
+    frame = frame[frame["ratio"].notna()]
+    if frame.empty:
+        return
 
-    # With a shared grid at 18 pt, an axis label on every panel is both redundant and wide
-    # enough to run into the neighbouring panel, so label the edges only: the y axis on the
-    # first column, the x axis on the lowest *drawn* panel of each column (the bottom row is
-    # partly blank whenever the config count is not a multiple of n_cols).
-    bottom_of_column = {i % n_cols: i // n_cols for i in range(len(labels))}
+    # Shared across every figure, so a point at the same place means the same thing in all of
+    # them. error is a score complement and so already bounded; only entropy needs measuring.
+    H = frame["H_seq"].dropna()
+    pad = 0.05 * max(H.max() - H.min(), 1e-9) if len(H) else 1.0
+    xlim = (H.min() - pad, H.max() + pad) if len(H) else (0.0, 1.0)
 
-    points = None
-    for i, label in enumerate(labels):
-        row, col = divmod(i, n_cols)
-        ax = axes[row][col]
-        group = records[records["config_label"] == label]
+    for ratio, group in frame.groupby("ratio", sort=True):
+        fig, ax = plt.subplots(figsize=FIGSIZE, constrained_layout=True)
         points = ax.scatter(
             group["H_seq"], group["error"],
             c=group["primary_score"], cmap=SCORE_CMAP, vmin=0.0, vmax=1.0,
-            s=26, edgecolors="white", linewidths=0.4,  # ring keeps overlapping marks separable
+            # One config now has the whole FIGSIZE canvas instead of a third of it, so the
+            # marks are scaled up to stay legible next to 18 pt type; the white ring keeps
+            # overlapping points separable at that size.
+            s=90, edgecolors="white", linewidths=0.8,
         )
-        ax.set_title(f"{label}  ({primary_metric}={group['primary_score'].mean():.2f})")
-        if row == bottom_of_column[col]:
-            ax.set_xlabel("Entropy Ĥ(Y|x) (bits)")
-        if col == 0:
-            ax.set_ylabel("error = 1 - correctness metric")
-    for i in range(len(labels), n_rows * n_cols):
-        axes[i // n_cols][i % n_cols].axis("off")
-
-    if points is not None:
-        fig.colorbar(points, ax=axes.ravel().tolist(), label=primary_metric, fraction=0.025, pad=0.02)
-    fig.suptitle(
-        f"Entropy vs error  (n={records['task_id'].nunique()} tasks, "
-        f"shaded by {primary_metric})\n"
-        "upper-left = confidently wrong; upper-right = wrong but appropriately uncertain"
-    )
-    # No bbox_inches="tight" here: it would crop the canvas to the drawn content and hand back
-    # a figure of some other size, which is exactly what FIGSIZE is pinning down.
-    _save(fig, output_dir, "entropy_vs_error")
-    plt.close(fig)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(-0.05, 1.05)
+        ax.set_xlabel("Entropy Ĥ(Y|x) (bits)")
+        ax.set_ylabel("error")
+        label = group["config_label"].iloc[0]
+        fig.colorbar(points, ax=ax, label=primary_metric, fraction=0.025, pad=0.02)
+        fig.suptitle(
+            f"Entropy vs error -- {label}  ({primary_metric}={group['primary_score'].mean():.2f}, "
+            f"n={group['task_id'].nunique()} tasks, shaded by {primary_metric})\n"
+        )
+        # No bbox_inches="tight" here: it would crop the canvas to the drawn content and hand back
+        # a figure of some other size, which is exactly what FIGSIZE is pinning down.
+        _save(fig, output_dir, f"entropy_vs_error_ratio_{float(ratio)}")
+        plt.close(fig)
 
 
 def plot_reliability(
@@ -687,7 +882,7 @@ def plot_reliability(
         )
 
     ax.set_xlabel("Confidence = exp(-Ĥ / mean_length)")
-    ax.set_ylabel(f"Mean {primary_metric}")
+    ax.set_ylabel(f"Mean {primary_metric} over tasks")
     ax.set_title("Calibration of entropy against answer quality")
     ax.legend()
     fig.tight_layout()

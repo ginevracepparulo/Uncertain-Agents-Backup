@@ -44,7 +44,9 @@ logger = logging.getLogger(__name__)
 LEGACY_COLUMNS = {
     "h_compressed": "h_comp",
     "delta_H": "IG",
+    "delta_h": "IG",
     "kl": "KL",
+    "kl_full_compressed": "KL",
     "ce_compressed": "ce_comp",
     "cache_seq_length_compressed": "cache_seq_length_comp",
 }
@@ -76,7 +78,10 @@ def load_records(results_dir: Path) -> pd.DataFrame:
     return records
 
 
-def main(results_dir: str, n_sink: int = 4, fig_format: str = "png", tikz: bool = False) -> None:
+def main(
+    results_dir: str, n_sink: int = 4, press_name: str = "streaming_llm",
+    fig_format: str = "png", tikz: bool = False,
+) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     # Before anything is read, so an unsupported format (or a missing tikzplotlib) fails
     # immediately rather than after the CSVs have been rewritten.
@@ -91,7 +96,9 @@ def main(results_dir: str, n_sink: int = 4, fig_format: str = "png", tikz: bool 
     ratios = sorted(records["ratio"].unique())
     logger.info(f"{records['task_id'].nunique()} task(s), ratios {ratios}")
 
-    write_teacher_forced_outputs(records, out_dir, ratios, n_sink)
+    # `press_name` only gates the StreamingLLM-specific cache-composition figure; pass the one
+    # the run used (it is recorded in the run config alongside records.csv).
+    write_teacher_forced_outputs(records, out_dir, ratios, n_sink, press_name)
     written = f".{fig_format}" + (" and .tex" if tikz else "")
     logger.info(f"Rewrote per_config.csv, comparison.csv, summary.csv and all {written} plots in {out_dir}")
 

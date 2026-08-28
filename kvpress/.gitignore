@@ -1,8 +1,6 @@
 dev_notebooks/
-results/entropy_analysis_llama32_1b_longbench_hotpotqa30_tf_prefill
-results/entropy_analysis_llama32_1b_loogle30_tf_prefill
-results/entropy_analysis_llama32_1b_loogle1951_tf_decode
-results/entropy_analysis_llama32_1b_sampled_decode
+results/
+results2/
 reports/
 .DS_Store
 uv.lock

@@ -1,11 +1,13 @@
 #!/bin/bash
 #SBATCH -A naiss2026-3-450-gpu
-#SBATCH -J entropy_sampled_decode
+#SBATCH -J sampled_decode
 #SBATCH -p gpu
 #SBATCH --gpus 1
-#SBATCH -t 05:00:00
-#SBATCH -o logs/entropy_sampled_decode_%j.out
-#SBATCH -e logs/entropy_sampled_decode_%j.err
+#SBATCH -t 06:00:00
+#SBATCH -o logs/sampled_decode_%j.out
+#SBATCH -e logs/sampled_decode_%j.err
+#SBATCH --mail-type=BEGIN,END,FAIL,TIME_LIMIT_80
+#SBATCH --mail-user=your.email@kth.se
 
 PROJ=/nobackup/proj/disk/large-pml-2025-storage/personal/gicepp
 
@@ -20,7 +22,7 @@ cd "$PROJ/Caching/kvpress"
 # fail immediately rather than burning 5 hours on CPU
 python -c "import torch; assert torch.cuda.is_available(), 'NO GPU VISIBLE'; print(torch.__version__, torch.cuda.get_device_name(0))"
 
-OUT=./results/entropy_analysis/llma31_8b/longbench/trec/sampled_decode_50mc
+OUT=./results/entropy_analysis/llma31_8b/longbench/trec/sampled_decode
 mkdir -p "$OUT"
 
 python evaluation/entropy_analysis.py \
