@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 1993-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from benchmarks.agent.calculate_metrics import calculate_metrics as agent_scorer
 from benchmarks.aime25.calculate_metrics import calculate_metrics as aime25_scorer
 from benchmarks.infinite_bench.calculate_metrics import calculate_metrics as infinite_bench_scorer
 from benchmarks.longbench.calculate_metrics import calculate_metrics as longbench_scorer
@@ -72,6 +73,9 @@ SCORER_REGISTRY = {
     "needle_in_haystack": needle_in_haystack_scorer,
     "aime25": aime25_scorer,
     "math500": math500_scorer,
+    # Not a HF dataset: agent turns are loaded from a trajectory via --trajectory_path,
+    # so this key has no DATASET_REGISTRY entry.
+    "agent": agent_scorer,
 }
 
 

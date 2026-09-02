@@ -13,6 +13,7 @@ module imports nothing from it.
 
 import math
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -39,6 +40,10 @@ class SampledOutput:
     sequences: torch.Tensor  # (n_samples, T_max) int64 sampled token ids; row i is only
     # valid for its first lengths[i] entries (rows that finished
     # early keep decoding, but those tokens are masked out)
+    step_logp: Optional[torch.Tensor] = None  # (n_samples, T_max) nats, per-position
+    # log p of the token actually emitted, already zeroed past each row's own length so
+    # `step_logp.sum(1) == -surprisal`. Kept so a subset of positions can be re-summed
+    # (see `sequence_entropy_estimate`'s `mask`); None when a caller did not record it.
 
 
 @dataclass
@@ -96,9 +101,31 @@ def compute_sequence_metrics(full: TeacherForcedOutput, compressed: TeacherForce
     )
 
 
-def sequence_entropy_estimate(sample_output: SampledOutput) -> SequenceEntropyEstimate:
-    """Turns a SampledOutput into H_hat/se/varentropy, converted from nats to bits."""
-    surprisal_bits = sample_output.surprisal / LOG2
+def sequence_entropy_estimate(
+    sample_output: SampledOutput, mask: Optional[torch.Tensor] = None
+) -> SequenceEntropyEstimate:
+    """
+    Turn a SampledOutput into H_hat/se/varentropy, converted from nats to bits.
+
+    `mask` restricts the estimate to a subset of each row's positions -- an (n_samples,
+    T_max) boolean selecting, say, only the tokens of the agent's bash command. The
+    estimator is unchanged in form: each draw still contributes one scalar, now the summed
+    surprisal over its selected positions, and `mean_length` becomes the mean number of
+    selected tokens so `sequence_confidence` stays a per-token quantity.
+
+    What this is *not* is the entropy of a marginal distribution over commands. It is the
+    entropy of the full continuation restricted to those positions -- the bits spent on the
+    command given the reasoning that preceded it in that same draw. That is the quantity
+    that pairs with the teacher-forced per-span numbers, which are also conditioned on the
+    real prefix.
+    """
+    if mask is None:
+        surprisal_bits = sample_output.surprisal / LOG2
+        lengths = sample_output.lengths.float()
+    else:
+        assert sample_output.step_logp is not None, "masked entropy needs SampledOutput.step_logp"
+        surprisal_bits = -(sample_output.step_logp * mask).sum(dim=1) / LOG2
+        lengths = mask.sum(dim=1).float()
     n = surprisal_bits.shape[0]
     varentropy = surprisal_bits.var(unbiased=True).item()
     return SequenceEntropyEstimate(
@@ -106,7 +133,7 @@ def sequence_entropy_estimate(sample_output: SampledOutput) -> SequenceEntropyEs
         se=(varentropy / n) ** 0.5,
         varentropy=varentropy,
         n_samples=n,
-        mean_length=sample_output.lengths.float().mean().item(),
+        mean_length=lengths.mean().item(),
         cache_seq_length=sample_output.cache_seq_length,
     )
 

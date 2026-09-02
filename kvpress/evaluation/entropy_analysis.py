@@ -129,6 +129,7 @@ TREC (avg context window: 5,177 tokens)
 
 Testing
 -----
+DATSET
 cd /Users/ginevracepparulo/Documents/KTH/Uncertain_Agents/Caching/kvpress
 SMOKE=/private/tmp/claude-501/-Users-ginevracepparulo-Documents-KTH-Uncertain-Agents-Caching/2c100e97-de6e-4a59-9f31-2b5634b2bbfa/scratchpad/smoke
 rm -rf "$SMOKE"
@@ -147,6 +148,9 @@ ls -R "$SMOKE"
 
 Usage
 -----
+DATSET
+------------------------------------------------------------------------
+------------------------------------------------------------------------        
 from ssh
 # 1) teacher-forced, prefill-only eviction
 OUT=./results/entropy_analysis/llma31_8b/longbench/trec/streaming_llm/tf_prefill
@@ -260,6 +264,167 @@ nohup .venv/bin/python evaluation/entropy_analysis.py \
 # ad-hoc single task, or a local JSONL with context/question/answer fields
 nohup .venv/bin/python evaluation/entropy_analysis.py --context "..." --question "..." --answer "..."
 python evaluation/entropy_analysis.py --dataset_path ./my_tasks.jsonl
+------------------------------------------------------------------------    
+------------------------------------------------------------------------
+Testing
+-----
+AGENT
+
+MODEL=unsloth/Llama-3.2-1B-Instruct
+MODEL_TAG=llama32_1b
+PRESS=streaming_llm
+TASK=prime_task
+RUN=./results/agent_runs/$MODEL_TAG/$TASK
+
+WORK=./results/agent_runs/$MODEL_TAG/$TASK/workdir
+mkdir -p "$RUN" "$WORK"
+
+MSWEA_SILENT_STARTUP=1 .venv/bin/mini -y \
+    -c mini_textbased.yaml \
+    -c model.model_class=kvpress.mini_swe_agent_model.KVPressLocalModel \
+    -c model.model_name=$MODEL \
+    -c model.compression_ratio=0.0 \
+    -c model.max_new_tokens=512 \
+    -c model.device=mps \
+    -c model.log_path="$RUN/agent_log.jsonl" \
+    -c environment.cwd="$WORK" \
+    -c agent.step_limit=30 \
+    -t "write a python file prime.py with a function is_prime(n)" \
+    -o "$RUN/agent.traj.json" \
+    2>&1 | tee "$RUN/agent_run.log"
+
+
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/sampled_prefill
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing False \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 3 --n_mc_samples 8 \
+    --compression_ratios "[0.0, 0.95]" \
+    --mc_batch_size 2 \
+    --ece_metric action_f1 \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+Usage
+-----
+AGENT
+from ssh
+# 1) teacher-forced, prefill-only eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/tf_prefill
+mkdir -p "$OUT"
+python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing True \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" \
+    --device cuda \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 2) teacher-forced, decode-time eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/tf_decode
+mkdir -p "$OUT"
+python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing True \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
+    --device cuda \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 3) sampled, prefill-only eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/sampled_prefill
+mkdir -p "$OUT"
+python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing False \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" \
+    --mc_batch_size 8 \
+    --ece_metric action_f1 \
+    --device cuda \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 4) sampled, decode-time eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/sampled_decode
+mkdir -p "$OUT"
+python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing False \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
+    --mc_batch_size 8 \
+    --ece_metric action_f1 \
+    --device cuda \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+------------------------------------------------------------------------    
+from local
+
+# 1) teacher-forced, prefill-only eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/tf_prefill
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing True \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 2) teacher-forced, decode-time eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/tf_decode
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing True \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 3) sampled, prefill-only eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/sampled_prefill
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing False \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" \
+    --mc_batch_size 8 \
+    --ece_metric action_f1 \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
+
+# 4) sampled, decode-time eviction
+OUT=./results/entropy_analysis/$MODEL_TAG/agent/$TASK/$PRESS/sampled_decode
+mkdir -p "$OUT"
+nohup .venv/bin/python evaluation/entropy_analysis.py \
+    --model $MODEL \
+    --press_name $PRESS \
+    --teacher_forcing False \
+    --trajectory_path "$RUN/agent_log.jsonl" --n_samples 150 --n_mc_samples 50 \
+    --compression_ratios "[0.0, 0.25, 0.50, 0.75, 0.95]" --decoding_compression_interval 1 \
+    --mc_batch_size 8 \
+    --ece_metric action_f1 \
+    --device mps \
+    --output_dir "$OUT" \
+    2>&1 | tee "$OUT/my_log.log"
 """
 
 import contextlib
@@ -280,6 +445,8 @@ from fire import Fire
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache, PreTrainedModel, PreTrainedTokenizer
 
 from evaluate_registry import DATASET_REGISTRY, PRESS_REGISTRY, SCORER_REGISTRY
+
+from agent_tasks import SPANS, load_agent_tasks, token_span_labels
 
 from entropy_metrics import (
     SampledOutput,
@@ -361,7 +528,21 @@ ANSWER_FIELD_REGISTRY = {
     "needle_in_haystack": None,
     "aime25": "answer",
     "math500": "answer",
+    # Agent turns carry the gold completion in Task.raw under this name (see agent_tasks),
+    # not in a dataset column; load_agent_tasks sets Task.answer directly.
+    "agent": "completion",
 }
+
+
+class ContextTooLong(Exception):
+    """Raised when an agent turn's prompt exceeds --max_context_length.
+
+    Unlike a QA task, whose `context` is a document that can be cut at a token boundary and
+    still pose the same question, an agent prompt is a conversation: truncating it mid-way
+    would drop whole turns (or half of one), leaving a transcript the agent never held. So
+    over-long turns are skipped rather than trimmed, and this carries that decision up to
+    the per-task loop in `main`.
+    """
 
 
 @dataclass
@@ -370,6 +551,16 @@ class Task:
     context: str
     question: str
     answer: Optional[str] = None
+    # Set only for agent turns (--trajectory_path): the multi-turn message list the agent
+    # actually sent. When present it supersedes context/question, because an agent prompt
+    # cannot be flattened into one user message without changing the token sequence the
+    # cache held -- turn markers vanish and the model's own prior replies get re-attributed
+    # to the user. See `build_prompt_ids`.
+    messages: Optional[list[dict]] = None
+    # Exact generated token ids for `answer`, when the trajectory recorded them. Lets
+    # teacher-forcing score the very tokens the agent emitted rather than a re-encode of
+    # the decoded string, which is near-always but not provably identical.
+    answer_ids: Optional[list[int]] = None
     # Original dataset row minus context/question, kept so the benchmark scorers in
     # SCORER_REGISTRY can read whatever answer/answers/task/all_classes/... columns
     # they need at scoring time. None for ad-hoc --context/--question tasks.
@@ -400,15 +591,20 @@ def load_tasks(
     dataset_split: str,
     dataset_path: Optional[str],
     n_samples: int,
+    trajectory_path: Optional[str] = None,
 ) -> list[Task]:
     """
     Load a list of tasks either from a local JSONL/CSV file (`dataset_path`) or
     from a registered benchmark dataset (`dataset`, a DATASET_REGISTRY key, e.g. 
-    `--dataset longbench --data_dir trec`). Streamed so only `n_samples` examples are
-    downloaded. Every registered benchmark's HF push uses "context"/"question"
+    `--dataset longbench --data_dir trec`), or from a mini-swe-agent trajectory
+    (`trajectory_path`), which yields one task per agent turn -- see `agent_tasks`.
+    Benchmark datasets are streamed so only `n_samples` examples are downloaded. Every registered benchmark's HF push uses "context"/"question"
     for these two fields; the gold-answer column varies and is resolved via
     `ANSWER_FIELD_REGISTRY`.
     """
+    if trajectory_path is not None:
+        return load_agent_tasks(Task, trajectory_path, n_samples)
+
     if dataset_path is not None:
         path = Path(dataset_path)
         if path.suffix == ".jsonl":
@@ -509,11 +705,40 @@ def resolve_max_new_tokens(override: Optional[int], max_reference_tokens: int, t
 
 def build_prompt_ids(
     tokenizer: PreTrainedTokenizer,
-    context: str,
-    question: str,
+    task: Task,
     device: str,
     max_context_length: Optional[int] = None,
 ) -> torch.Tensor:
+    """
+    Render a task's prompt to the `(1, prompt_len)` token ids that prefill the cache.
+
+    Two shapes of prompt, because a task can come from two places:
+
+    - a QA benchmark, where the prompt genuinely *is* one user turn (a document plus a
+      question about it), so context and question are joined and wrapped in a single
+      user message. `max_context_length` trims the document in token space.
+    - an agent turn (--trajectory_path), where the prompt is the real multi-turn message
+      list. It is passed to the chat template as-is: collapsing it into one user message
+      would drop every turn marker and re-attribute the model's own prior replies to the
+      user, producing a different token sequence from the one the agent's KV cache held --
+      and since eviction is a function of that sequence and its length, that would silently
+      measure a different experiment. Over-long prompts raise `ContextTooLong` instead of
+      being trimmed; see that exception for why.
+
+    `add_special_tokens=False` in both branches: the chat template has already inserted
+    every special token, and letting the tokenizer prepend a second BOS would corrupt the
+    sequence.
+    """
+    if task.messages is not None:
+        text = tokenizer.apply_chat_template(task.messages, add_generation_prompt=True, tokenize=False)
+        prompt_ids = tokenizer.encode(text, return_tensors="pt", add_special_tokens=False).to(device)
+        if max_context_length is not None and prompt_ids.shape[1] > max_context_length:
+            raise ContextTooLong(
+                f"prompt is {prompt_ids.shape[1]} tokens, over --max_context_length={max_context_length}"
+            )
+        return prompt_ids
+
+    context, question = task.context, task.question
     if max_context_length is not None:
         context_ids = tokenizer.encode(context, add_special_tokens=False)
         if len(context_ids) > max_context_length:
@@ -544,8 +769,17 @@ def get_reference_ids(
     answer: Optional[str],
     max_new_tokens: int,
     max_reference_tokens: int,
+    answer_ids: Optional[list[int]] = None,
 ) -> tuple[torch.Tensor, str]:
-    """Use the dataset's gold answer as the reference if available, else generate one."""
+    """Use the dataset's gold answer as the reference if available, else generate one.
+
+    `answer_ids` short-circuits the encode when the exact generated token ids are known
+    (agent turns logged by KVPressLocalModel): teacher-forcing then scores the very tokens
+    the model emitted, rather than a re-encode of their decoded string.
+    """
+    if answer_ids:
+        ref_ids = torch.tensor([answer_ids[:max_reference_tokens]], dtype=torch.long, device=model.device)
+        return ref_ids, "gold_ids"
     if answer:
         ref_ids = tokenizer.encode(answer, return_tensors="pt", add_special_tokens=False).to(model.device)
         if ref_ids.shape[1] > max_reference_tokens:
@@ -639,6 +873,41 @@ def run_teacher_forced_task(
     return TeacherForcedOutput(log_probs=log_probs, cache_seq_length=cache_seq_length)
 
 
+def sampled_span_masks(
+    tokenizer: PreTrainedTokenizer, sequences: torch.Tensor, lengths: torch.Tensor
+) -> dict[str, torch.Tensor]:
+    """
+    Per-span boolean masks over a batch of sampled continuations, shape (rows, T_max) each.
+
+    Every draw is a different string, so the command sits at a different offset in every row
+    and the masks have to be built per row. Positions past a row's own `lengths[i]` are
+    labelled by neither span, which matches how `step_logp` already zeroes them.
+
+    Rows whose draw contains no parsable fence contribute nothing to the action mask -- the
+    model failed to emit a command that time, which is a real outcome, not a row to drop.
+    """
+    masks = {span: torch.zeros_like(sequences, dtype=torch.bool) for span in SPANS}
+    for i in range(sequences.shape[0]):
+        labels = token_span_labels(tokenizer, sequences[i, : int(lengths[i])].tolist())
+        for position, label in enumerate(labels):
+            masks[label][i, position] = True
+    return masks
+
+
+def align_width(*tensors: torch.Tensor) -> list[torch.Tensor]:
+    """Pad a set of (rows, T) tensors to a common width so they can be combined elementwise.
+
+    The per-step matrices reaching `sequence_KL_estimate` are produced by different passes --
+    sampling, and a re-scoring pass that trims each chunk to its own longest row -- so they
+    can disagree on T even though they describe the same sequences.
+    """
+    width = max(t.shape[1] for t in tensors)
+    return [
+        pad_matrix_to(t, width) if t.dtype.is_floating_point else pad_sequences_to(t, width)
+        for t in tensors
+    ]
+
+
 def resolve_mc_chunks(n_samples: int, mc_batch_size: Optional[int]) -> list[int]:
     """
     Split `n_samples` Monte Carlo draws into per-pass batch sizes of at most `mc_batch_size`.
@@ -679,6 +948,20 @@ def pad_sequences_to(sequences: torch.Tensor, width: int) -> torch.Tensor:
         sequences.shape[0], width - sequences.shape[1], dtype=sequences.dtype, device=sequences.device
     )
     return torch.cat([sequences, pad], dim=1)
+
+
+def pad_matrix_to(matrix: torch.Tensor, width: int) -> torch.Tensor:
+    """Right-pad a (rows, T) float block to `width` columns with zeros.
+
+    The float counterpart of `pad_sequences_to`, for the per-step log-probability matrices.
+    Zero is the correct pad here rather than merely a safe one: these are only ever summed
+    over positions, and the padded columns lie past every row's own length, so a zero
+    contributes exactly nothing to any total.
+    """
+    if matrix.shape[1] >= width:
+        return matrix
+    pad = torch.zeros(matrix.shape[0], width - matrix.shape[1], dtype=matrix.dtype, device=matrix.device)
+    return torch.cat([matrix, pad], dim=1)
 
 
 @dataclass
@@ -825,6 +1108,7 @@ def run_sampled_task(
             lengths=torch.cat([o.lengths for o in outs]),
             cache_seq_length=outs[0].cache_seq_length,  # same prompt and press in every chunk
             sequences=torch.cat([pad_sequences_to(o.sequences, width) for o in outs], dim=0),
+            step_logp=torch.cat([pad_matrix_to(o.step_logp, width) for o in outs], dim=0),
         )
     return sample_chunk(model, prefilled, press, n_samples, max_new_tokens, eos_token_id)
 
@@ -855,6 +1139,9 @@ def sample_chunk(
         # Kept so the drawn sequences can be re-scored under another press later
         # (`score_sequences_under_press`), which is what the sequence-KL estimator needs.
         sampled_tokens: list[torch.Tensor] = []
+        # Per-position log-probs, masked the same way `seq_logp` is accumulated, so they sum
+        # back to it exactly. Kept so a span of positions can be re-summed on its own.
+        step_logps: list[torch.Tensor] = []
 
         for i in range(max_new_tokens):
             log_probs = torch.log_softmax(next_logits.float(), dim=-1)
@@ -864,6 +1151,7 @@ def sample_chunk(
 
             # Only accumulate for samples still active at the start of this step;
             # the step that emits EOS is counted (p(EOS | ...) is part of p(y)).
+            step_logps.append(step_logp * active.float())
             seq_logp = seq_logp + step_logp * active.float()
             lengths = lengths + active.long()
             active = active & (next_token != eos_token_id)
@@ -879,6 +1167,7 @@ def sample_chunk(
         lengths=lengths,
         cache_seq_length=cache_seq_length,
         sequences=torch.stack(sampled_tokens, dim=1),
+        step_logp=torch.stack(step_logps, dim=1),
     )
 
 
@@ -890,6 +1179,7 @@ def score_sequences_under_press(
     lengths: torch.Tensor,
     press: Optional[BasePress],
     mc_batch_size: Optional[int] = None,
+    per_step: bool = False,
 ) -> torch.Tensor:
     """
     args:
@@ -902,9 +1192,12 @@ def score_sequences_under_press(
         press: optional BasePress whose eviction policy the scoring runs under
         mc_batch_size: rows per forward pass; None = all at once. Row order is preserved, so
             `logp[i]` always corresponds to `sequences[i]` regardless of the chunking.
+        per_step: return the (n_samples, T_max) per-position log-probabilities instead of
+            their row sums, so a span of positions can be scored on its own. The summed
+            default is the sequence-level quantity the KL estimator consumes.
     outputs:
         (n_samples,) tensor of natural-log sequence log-probabilities log p(y^(i) | prompt)
-        under `press`
+        under `press` -- or the (n_samples, T_max) per-position matrix when `per_step`
 
     Score already-drawn sequences under a (possibly compressed) cache, without generating.
 
@@ -933,8 +1226,13 @@ def score_sequences_under_press(
             width = int(lengths[rows].max().item())
             parts.append(score_chunk(model, prefilled, sequences[rows, :width], lengths[rows], press))
             start += size
-        return torch.cat(parts)
-    return score_chunk(model, prefilled, sequences, lengths, press)
+        # Chunks are trimmed to their own longest row, so they come back different widths;
+        # pad before stacking. Zero pads sum to nothing, as in `run_sampled_task`.
+        full_width = max(part.shape[1] for part in parts)
+        steps = torch.cat([pad_matrix_to(part, full_width) for part in parts], dim=0)
+    else:
+        steps = score_chunk(model, prefilled, sequences, lengths, press)
+    return steps if per_step else steps.sum(dim=1)
 
 
 @torch.no_grad()
@@ -945,14 +1243,15 @@ def score_chunk(
     lengths: torch.Tensor,
     press: Optional[BasePress],
 ) -> torch.Tensor:
-    """One forced-token scoring pass over `sequences`. See `score_sequences_under_press`."""
+    """One forced-token scoring pass over `sequences`, returning the (rows, T) per-step
+    log-probabilities. See `score_sequences_under_press`, which sums them by default."""
     device = model.device
     n_samples, n_steps = sequences.shape
     prompt_length = prefilled.prompt_length
     cache, next_logits = replicate_prefill(prefilled, n_samples)
 
     with press(model) if press is not None else contextlib.nullcontext():
-        seq_logp = torch.zeros(n_samples, device=device)
+        step_logps: list[torch.Tensor] = []
         for t in range(n_steps):
             log_probs = torch.log_softmax(next_logits.float(), dim=-1)
             token = sequences[:, t]
@@ -960,7 +1259,7 @@ def score_chunk(
 
             # Mirrors run_sampled_task's `active` mask: only positions inside a row's own
             # generated length contribute to that row's sequence log-probability.
-            seq_logp = seq_logp + step_logp * (t < lengths).float()
+            step_logps.append(step_logp * (t < lengths).float())
             if t == n_steps - 1:
                 break
 
@@ -968,7 +1267,7 @@ def score_chunk(
             outputs = model(input_ids=token.unsqueeze(1), past_key_values=cache, position_ids=position_ids)
             next_logits = outputs.logits[:, -1, :]
 
-    return seq_logp
+    return torch.stack(step_logps, dim=1)
 
 
 @torch.no_grad()
@@ -1164,9 +1463,9 @@ def process_teacher_forced_task(
     `compressed` columns (h_full/h_comp, ce_full/ce_comp, ...) come paired from
     `compute_sequence_metrics`. Ratio 0.0 is skipped (identical to full).
     """
-    prompt_ids = build_prompt_ids(tokenizer, task.context, task.question, model.device, max_context_length)
+    prompt_ids = build_prompt_ids(tokenizer, task, model.device, max_context_length)
     reference_ids, ref_source = get_reference_ids(
-        model, tokenizer, prompt_ids, task.answer, max_new_tokens, max_reference_tokens
+        model, tokenizer, prompt_ids, task.answer, max_new_tokens, max_reference_tokens, task.answer_ids
     )
     if reference_ids.shape[1] == 0:
         logger.warning(f"task {task.task_id}: empty reference sequence, skipping")
@@ -1176,6 +1475,11 @@ def process_teacher_forced_task(
         f"task {task.task_id}: prompt_len={prompt_ids.shape[1]} ref_len={reference_ids.shape[1]} "
         f"ref_source={ref_source}"
     )
+
+    # Agent turns split into a command and the prose around it, which distort very
+    # differently and are worth reading apart; a QA reference has no such structure, so it
+    # gets no span column and the per-span outputs are simply not written.
+    span_labels = token_span_labels(tokenizer, reference_ids[0].tolist()) if task.messages is not None else None
 
     full = run_teacher_forced_task(model, prompt_ids, reference_ids, press=None)
 
@@ -1188,6 +1492,8 @@ def process_teacher_forced_task(
         )
         compressed = run_teacher_forced_task(model, prompt_ids, reference_ids, press=press, decode_per_token=decode_per_token)
         df = compute_sequence_metrics(full, compressed, reference_ids)
+        if span_labels is not None:
+            df["span"] = span_labels
         df.insert(0, "ratio", ratio)
         df.insert(0, "task_id", task.task_id)
         df["cache_seq_length_full"] = full.cache_seq_length
@@ -1233,7 +1539,7 @@ def process_task_sampled(
     and per-config plots. The KL columns are NaN on the `full` row (KL against itself is 0
     by construction and carries no information).
     """
-    prompt_ids = build_prompt_ids(tokenizer, task.context, task.question, model.device, max_context_length)
+    prompt_ids = build_prompt_ids(tokenizer, task, model.device, max_context_length)
     eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else model.config.eos_token_id
     gold = task.answer or ""
 
@@ -1241,6 +1547,8 @@ def process_task_sampled(
         f"task {task.task_id}: prompt_len={prompt_ids.shape[1]} n_mc_samples={n_mc_samples} "
         f"gold_len={len(gold)} chars"
     )
+
+    is_agent = task.messages is not None
 
     def config_row(
         kv_caching: str,
@@ -1250,34 +1558,48 @@ def process_task_sampled(
         prefilled: PrefilledPrompt,
         sampled: Optional[SampledOutput] = None,
         KL_estimate: Optional[SequenceKLEstimate] = None,
-    ) -> dict:
+        KL_by_span: Optional[dict] = None,
+    ) -> list[dict]:
         if sampled is None:
             sampled = run_sampled_task(
                 model, prefilled, press, n_mc_samples, max_new_tokens, eos_token_id, mc_batch_size
             )
-        estimate = sequence_entropy_estimate(sampled)
         generated_ids = greedy_generate_output(model, prefilled, press, max_new_tokens, eos_token_id)
         predicted_answer = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
-        return {
-            "regime": "sampled",
-            "task_id": task.task_id,
-            "kv_caching": kv_caching,
-            "ratio": ratio,
-            "config_label": config_label,
-            "n_mc_samples": n_mc_samples,
-            "H_seq": estimate.H_hat,
-            "H_seq_se": estimate.se,
-            "varentropy_seq": estimate.varentropy,
-            "mean_length": estimate.mean_length,
-            "confidence": sequence_confidence(estimate),
-            "greedy_length": int(generated_ids.numel()),
-            "cache_seq_length": estimate.cache_seq_length,
-            "KL_seq": KL_estimate.KL if KL_estimate is not None else float("nan"),
-            "KL_seq_se": KL_estimate.se if KL_estimate is not None else float("nan"),
-            "n_KL_samples": KL_estimate.n_samples if KL_estimate is not None else 0,
-            "gold": gold,
-            "predicted_answer": predicted_answer,
-        }
+
+        # `all` reproduces the unsplit numbers exactly (mask=None takes the original path);
+        # the spans re-sum the same draws over a subset of positions. Agent turns only: a QA
+        # continuation has no action/reasoning structure to split on.
+        span_masks = sampled_span_masks(tokenizer, sampled.sequences, sampled.lengths) if is_agent else {}
+        rows_out = []
+        for span in ("all", *span_masks):
+            mask = span_masks.get(span)
+            estimate = sequence_entropy_estimate(sampled, mask)
+            KL_for_span = KL_estimate if span == "all" else (KL_by_span or {}).get(span)
+            rows_out.append({
+                "regime": "sampled",
+                # Agent runs only, so a QA per_config.csv keeps exactly the columns it had
+                # before spans existed and the replot scripts see no change.
+                **({"span": span} if is_agent else {}),
+                "task_id": task.task_id,
+                "kv_caching": kv_caching,
+                "ratio": ratio,
+                "config_label": config_label,
+                "n_mc_samples": n_mc_samples,
+                "H_seq": estimate.H_hat,
+                "H_seq_se": estimate.se,
+                "varentropy_seq": estimate.varentropy,
+                "mean_length": estimate.mean_length,
+                "confidence": sequence_confidence(estimate),
+                "greedy_length": int(generated_ids.numel()),
+                "cache_seq_length": estimate.cache_seq_length,
+                "KL_seq": KL_for_span.KL if KL_for_span is not None else float("nan"),
+                "KL_seq_se": KL_for_span.se if KL_for_span is not None else float("nan"),
+                "n_KL_samples": KL_for_span.n_samples if KL_for_span is not None else 0,
+                "gold": gold,
+                "predicted_answer": predicted_answer,
+            })
+        return rows_out
 
     # One prefill per config, shared by every pass that runs under it (see `PrefilledPrompt`):
     # for `full` that is the sampling and greedy passes, and for each compressed ratio the
@@ -1289,7 +1611,10 @@ def process_task_sampled(
     full_sampled = run_sampled_task(
         model, full_prefilled, None, n_mc_samples, max_new_tokens, eos_token_id, mc_batch_size
     )
-    rows = [config_row("full", "full", float("nan"), None, full_prefilled, sampled=full_sampled)]
+    rows = config_row("full", "full", float("nan"), None, full_prefilled, sampled=full_sampled)
+    # The y^(i) the KL estimator uses are full's draws, so the spans are a property of those
+    # sequences and are shared by every compressed config scored against them.
+    full_span_masks = sampled_span_masks(tokenizer, full_sampled.sequences, full_sampled.lengths) if is_agent else {}
     del full_prefilled  # its cache is dead once `full`'s passes are done; free it before the sweep
 
     for ratio in compression_ratios:
@@ -1299,11 +1624,23 @@ def process_task_sampled(
             press_name, ratio, n_sink, prompt_ids.shape[1], decoding_compression_interval, decoding_target_size
         )
         prefilled = prefill_prompt(model, prompt_ids, press)
-        KL_estimate = None
+        KL_estimate, KL_by_span = None, None
         if compute_sequence_KL:
+            # per_step only when the spans are wanted; otherwise this is the original 1-D path.
             logp_comp = score_sequences_under_press(
-                model, prefilled, full_sampled.sequences, full_sampled.lengths, press, mc_batch_size
+                model, prefilled, full_sampled.sequences, full_sampled.lengths, press, mc_batch_size,
+                per_step=is_agent,
             )
+            if is_agent:
+                comp_steps, full_steps, *span_list = align_width(
+                    logp_comp, full_sampled.step_logp, *full_span_masks.values()
+                )
+                aligned_masks = dict(zip(full_span_masks, span_list))
+                KL_by_span = {
+                    span: sequence_KL_estimate((full_steps * m).sum(dim=1), (comp_steps * m).sum(dim=1))
+                    for span, m in aligned_masks.items()
+                }
+                logp_comp = comp_steps.sum(dim=1)
             KL_estimate = sequence_KL_estimate(-full_sampled.surprisal, logp_comp)
             if KL_estimate.KL < 0:
                 logger.warning(
@@ -1311,8 +1648,11 @@ def process_task_sampled(
                     f"N={KL_estimate.n_samples} (se={KL_estimate.se:.3f}). KL is non-negative by "
                     "definition, so this estimate is variance-dominated -- do not trust its magnitude."
                 )
-        rows.append(
-            config_row("compressed", f"compressed@{ratio}", ratio, press, prefilled, KL_estimate=KL_estimate)
+        rows.extend(
+            config_row(
+                "compressed", f"compressed@{ratio}", ratio, press, prefilled,
+                KL_estimate=KL_estimate, KL_by_span=KL_by_span,
+            )
         )
         del prefilled  # don't hold this ratio's cache while the next ratio prefills
 
@@ -1522,6 +1862,34 @@ def write_teacher_forced_outputs(
     logger.info(f"Saved per_config.csv, comparison.csv, summary.csv and plots to {out_dir}")
 
 
+def write_span_outputs(
+    records: pd.DataFrame, out_dir: Path, ratios: list[float], n_sink: int, press_name: str
+) -> None:
+    """
+    Re-emit the whole teacher-forced artifact set once per token span, into `out_dir/<span>/`.
+
+    Only agent runs have a `span` column, so this is a no-op for QA datasets. The point is
+    that an agent completion is mostly prose: in a typical turn the command is a few percent
+    of the tokens, so a whole-completion IG or KL is dominated by uncertainty over *phrasing*
+    rather than over the decision that actually touches the environment. Filtering the
+    per-position records to one span and re-running the same aggregation separates the two.
+
+    `out_dir` itself keeps the unsplit outputs, so existing paths and the replot scripts are
+    unaffected, and the three sets share filenames and are directly diffable.
+    """
+    if "span" not in records.columns:
+        return
+    for span in SPANS:
+        subset = records[records["span"] == span]
+        if subset.empty:
+            logger.warning(f"no {span} tokens in any task; skipping {span}/ outputs")
+            continue
+        span_dir = out_dir / span
+        span_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"--- {span} tokens only ({subset['task_id'].nunique()} task(s)) ---")
+        write_teacher_forced_outputs(subset, span_dir, ratios, n_sink, press_name)
+
+
 # --------------------------------------------------------------------------------------
 # Benchmark-backed accuracy scoring
 #
@@ -1550,7 +1918,15 @@ PRIMARY_METRIC = {
     "needle_in_haystack": "rouge-l",
     "aime25": "accuracy",
     "math500": "accuracy",
+    # The action is the only part of a turn that touches the environment, so it is the
+    # default calibration axis. --ece_metric selects any of the four the agent scorer
+    # returns (action_exact_match, action_f1, reasoning_exact_match, reasoning_f1).
+    "agent": "action_f1",
 }
+
+# The four scores benchmarks/agent/calculate_metrics.py returns. Any of them can be the
+# calibration axis via --ece_metric; `PRIMARY_METRIC["agent"]` names the default.
+AGENT_METRICS = ("action_exact_match", "action_f1", "reasoning_exact_match", "reasoning_f1")
 
 # Scorers that report on a 0-100 percentage scale; their per-example score is divided by
 # 100 so the calibration threshold and the confidence axis both live in [0, 1].
@@ -1641,7 +2017,9 @@ def benchmark_metrics_aggregate(group_df: pd.DataFrame, dataset_key: Optional[st
     return flatten_metrics(SCORER_REGISTRY[dataset_key](group_df.copy()))
 
 
-def benchmark_score_per_example(df: pd.DataFrame, dataset_key: Optional[str]) -> list[float]:
+def benchmark_score_per_example(
+    df: pd.DataFrame, dataset_key: Optional[str], primary: Optional[str] = None
+) -> list[float]:
     """
     Per-row correctness in [0, 1] for calibration, obtained by reusing the benchmark's own
     scorer: apply it to one-row DataFrames (each scorer already reduces its input) and pull
@@ -1651,7 +2029,7 @@ def benchmark_score_per_example(df: pd.DataFrame, dataset_key: Optional[str]) ->
     """
     if dataset_key is None:
         return [r["rouge-1"] for r in _loogle_per_row(df)]
-    primary = PRIMARY_METRIC.get(dataset_key)
+    primary = primary or PRIMARY_METRIC.get(dataset_key)
     if primary is None:
         return [float("nan")] * len(df)
     if dataset_key == "loogle":
@@ -1719,6 +2097,46 @@ def aggregate_sampled(
     return pd.DataFrame(summary_rows), bin_tables, eces, sorted(metric_columns)
 
 
+def write_sampled_outputs(
+    per_config: pd.DataFrame, out_dir: Path, dataset_key: Optional[str], primary_metric: Optional[str],
+    compute_bertscore: bool, n_ece_bins: int, ece_bin_strategy: str, compute_sequence_KL: bool,
+) -> None:
+    """
+    Write the sampled regime's CSVs and figures for one already-scored frame.
+
+    Factored out so the per-span outputs are produced by the very same code as the unsplit
+    ones rather than a parallel copy. `main` keeps the top-level call inline; this serves `out_dir/action/`
+    and `out_dir/reasoning/`.
+    """
+    per_config.to_csv(out_dir / "per_config.csv", index=False)
+    comparison = build_sampled_comparison(per_config)
+    comparison.to_csv(out_dir / "comparison.csv", index=False)
+
+    summary, bin_tables, eces, metric_columns = aggregate_sampled(
+        per_config, dataset_key, compute_bertscore, n_ece_bins, ece_bin_strategy
+    )
+    summary.to_csv(out_dir / "summary.csv", index=False)
+
+    if primary_metric is not None:
+        plot_entropy_vs_error(per_config, out_dir, primary_metric)
+        plot_reliability(bin_tables, eces, out_dir, primary_metric)
+        plot_quality_traces(per_config, out_dir, primary_metric)
+    plot_accuracy_vs_ratio(summary, out_dir, metric_columns, primary_metric)
+    if compute_sequence_KL and not comparison.empty:
+        plot_sampled_distortion(comparison, out_dir)
+        plot_distortion_traces(
+            comparison.assign(
+                context_length=comparison["task_id"].map(
+                    per_config[per_config["kv_caching"] == "full"].set_index("task_id")["cache_seq_length"]
+                )
+            ),
+            out_dir,
+            delta_column="IG_seq", KL_column="KL_seq",
+            delta_ylabel="IG = H(Y|x)_comp - H(Y|x)_full (bits/sequence)",
+            KL_ylabel="KL(p_full || p_comp) (bits/sequence)",
+        )
+
+
 def write_run_config(out_dir: Path, run_args: dict) -> None:
     """
     Dump the exact args `main` was called with -- defaults included, not just the ones
@@ -1778,6 +2196,7 @@ def main(
     data_dir: Optional[str] = "shortdep_qa",
     dataset_split: str = "test",
     dataset_path: Optional[str] = None,
+    trajectory_path: Optional[str] = None,
     n_samples: int = 5,
     compression_ratios: str = "[0.0, 0.25, 0.5, 0.75]",
     press_name: str = "streaming_llm",
@@ -1836,6 +2255,14 @@ def main(
 
     `fig_format` picks the file format for every figure (png / svg / pdf); the figure size and
     type size are the same either way.
+
+    `trajectory_path` swaps the task source from a QA benchmark to a mini-swe-agent
+    trajectory: one task per agent turn, the turn's real multi-turn prompt against the text
+    the agent produced. Both regimes and every metric are unchanged -- the agent's own
+    growing transcript simply plays the role a retrieved document plays for a QA task.
+    Accuracy comes from the `agent` scorer (action / reasoning x exact-match / token-F1),
+    and `--ece_metric` picks which of its four scores drives calibration. Requires a
+    text-based trajectory; see `agent_tasks` for why toolcall ones are rejected.
     """
     run_args = dict(locals())  # exact keyword args main() got (incl. defaults); capture before any locals
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -1865,12 +2292,17 @@ def main(
     if context is not None and question is not None:
         tasks = [Task(task_id="0", context=context, question=question, answer=answer)]
     else:
-        tasks = load_tasks(dataset, data_dir, dataset_split, dataset_path, n_samples)
+        tasks = load_tasks(dataset, data_dir, dataset_split, dataset_path, n_samples, trajectory_path)
     logger.info(f"Loaded {len(tasks)} task(s)")
 
     # dataset_key indexes SCORER_REGISTRY; None for ad-hoc --context/--question or local
-    # --dataset_path data, which have no registered benchmark scorer.
-    dataset_key = None if (context is not None or dataset_path is not None) else dataset
+    # --dataset_path data, which have no registered benchmark scorer. Agent turns have one
+    # ("agent") even though they have no DATASET_REGISTRY entry, since they are not loaded
+    # from HF.
+    if trajectory_path is not None:
+        dataset_key = "agent"
+    else:
+        dataset_key = None if (context is not None or dataset_path is not None) else dataset
     # Raw dataset rows for every task, captured before the resume filter below drops the
     # already-completed ones, so the benchmark scorers can read their answer/task/... columns.
     raw_by_id = {task.task_id: (task.raw or {}) for task in tasks}
@@ -1888,11 +2320,15 @@ def main(
     if not teacher_forcing:
         # ---- sampled regime: entropy H(Y|x) + benchmark accuracy + calibration ----
         for task in tasks:
-            df = process_task_sampled(
-                model_, tokenizer, task, ratios, press_name, n_sink, n_mc_samples, max_new_tokens,
-                max_context_length,
-                decoding_compression_interval, decoding_target_size, compute_sequence_KL, mc_batch_size,
-            )
+            try:
+                df = process_task_sampled(
+                    model_, tokenizer, task, ratios, press_name, n_sink, n_mc_samples, max_new_tokens,
+                    max_context_length,
+                    decoding_compression_interval, decoding_target_size, compute_sequence_KL, mc_batch_size,
+                )
+            except ContextTooLong as e:
+                logger.warning(f"task {task.task_id}: {e}, skipping")
+                continue
             df.to_csv(records_path, mode="a", header=not records_path.exists(), index=False)
 
         if not records_path.exists():
@@ -1913,7 +2349,11 @@ def main(
         # rows instead of one (turning its arithmetic into object-dtype Series and blowing up
         # the first numeric aggregation downstream). Last write wins, as for a resumed task.
         n_before = len(per_config)
-        per_config = per_config.drop_duplicates(subset=["task_id", "config_label"], keep="last")
+        # `span` joins the key for agent runs, where one (task, config) legitimately has an
+        # `all` row plus one row per span; without it the de-duplication would keep a single
+        # arbitrary span and silently discard the rest.
+        dedup_keys = ["task_id", "config_label"] + (["span"] if "span" in per_config.columns else [])
+        per_config = per_config.drop_duplicates(subset=dedup_keys, keep="last")
         if len(per_config) < n_before:
             logger.warning(
                 f"{n_before - len(per_config)} duplicate (task_id, config_label) row(s) in "
@@ -1928,12 +2368,39 @@ def main(
         raw_df = pd.DataFrame([{"task_id": tid, **raw} for tid, raw in raw_by_id.items()])
         per_config = per_config.merge(raw_df, on="task_id", how="left")
 
+        spans_present = [name for name in SPANS if name in set(per_config.get("span", []))]
+
         # Correctness for the calibration axis is the dataset's own primary metric (via its
         # benchmark scorer); ece_metric is only the fallback for local/ad-hoc data.
         primary_metric = PRIMARY_METRIC.get(dataset_key) if dataset_key is not None else ece_metric
+        if dataset_key == "agent" and ece_metric in AGENT_METRICS:
+            # The agent scorer returns four equally valid scores; unlike the QA benchmarks
+            # there is no single canonical one, so --ece_metric selects rather than falls back.
+            primary_metric = ece_metric
         calibrated = primary_metric is not None
-        per_config["primary_score"] = benchmark_score_per_example(per_config, dataset_key)
+        per_config["primary_score"] = benchmark_score_per_example(per_config, dataset_key, primary_metric)
         per_config["error"] = 1.0 - per_config["primary_score"]
+
+        # Agent runs carry one row per (task, config, span); the unsplit `all` rows are what
+        # the top-level outputs describe, and each span gets its own full set in a subdir.
+        # The per-span greedy answer is the same generation either way -- only the entropy and
+        # KL columns differ -- so `primary_score` is recomputed per span against the metric
+        # that span is about (action_f1 for action, reasoning_f1 for reasoning).
+        for span in spans_present:
+            span_dir = out_dir / span
+            span_dir.mkdir(parents=True, exist_ok=True)
+            span_metric = f"{span}_f1" if dataset_key == "agent" else primary_metric
+            span_rows = per_config[per_config["span"] == span].copy()
+            span_rows["primary_score"] = benchmark_score_per_example(span_rows, dataset_key, span_metric)
+            span_rows["error"] = 1.0 - span_rows["primary_score"]
+            logger.info(f"--- {span} tokens only ({span_rows['task_id'].nunique()} task(s)) ---")
+            write_sampled_outputs(
+                span_rows, span_dir, dataset_key, span_metric, compute_bertscore,
+                n_ece_bins, ece_bin_strategy, compute_sequence_KL,
+            )
+
+        if spans_present:
+            per_config = per_config[per_config["span"] == "all"].copy()
         per_config.to_csv(out_dir / "per_config.csv", index=False)
 
         comparison = build_sampled_comparison(per_config)
@@ -2007,11 +2474,15 @@ def main(
     # ---- teacher-forced regime: per-position entropy / KL / cross-entropy ----
     elif teacher_forcing:
         for task in tasks:
-            df = process_teacher_forced_task(
-                model_, tokenizer, task, ratios, press_name, n_sink, max_new_tokens, max_reference_tokens,
-                max_context_length,
-                decoding_compression_interval, decoding_target_size,
-            )
+            try:
+                df = process_teacher_forced_task(
+                    model_, tokenizer, task, ratios, press_name, n_sink, max_new_tokens, max_reference_tokens,
+                    max_context_length,
+                    decoding_compression_interval, decoding_target_size,
+                )
+            except ContextTooLong as e:
+                logger.warning(f"task {task.task_id}: {e}, skipping")
+                continue
             if df is not None:
                 df.to_csv(records_path, mode="a", header=not records_path.exists(), index=False)
 
@@ -2021,6 +2492,7 @@ def main(
 
         records = pd.read_csv(records_path, dtype={"task_id": str})
         write_teacher_forced_outputs(records, out_dir, ratios, n_sink, press_name)
+        write_span_outputs(records, out_dir, ratios, n_sink, press_name)
 
 
 if __name__ == "__main__":

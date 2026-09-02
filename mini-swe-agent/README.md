@@ -24,7 +24,7 @@ We now ask: **What if our agent was 100x simpler, and still worked nearly as wel
 
 - **Widely adopted**: Used by Meta, NVIDIA, Essential AI, IBM, Nebius, Anyscale, Princeton University, Stanford University, and many more.
 - **Minimal**: Just some 100 lines of python for the [agent class](https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/agents/default.py) (and a bit more for the [environment](https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/environments/local.py),
-[model](https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/models/litellm_model.py), and [run script](https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/run/hello_world.py)) — no fancy dependencies!
+  [model](https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/models/litellm_model.py), and [run script](https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/run/hello_world.py)) — no fancy dependencies!
 - **Performant:** Scores >74% on the [SWE-bench verified benchmark](https://www.swebench.com/); starts much faster than Claude Code
 - **Deployable:** Supports **local environments**, **docker/podman**, **singularity/apptainer**, **bublewrap**, **contree**, and more
 - **Compatible:** Supports all models via **litellm**, **openrouter**, **portkey**, and more. Support for `/completion` and `/response` endpoints, interleaved thinking etc.
@@ -40,17 +40,14 @@ However, one year later, as LMs have become more capable, a lot of this is not n
 In fact, the `mini` agent
 
 - **Does not have any tools other than bash** — it doesn't even need to use the tool-calling interface of the LMs.
-  This means that you can run it with literally any model. When running in sandboxed environments you also don't need to take care
-  of installing a single package — all it needs is bash.
+  This means that you can run it with literally any model. When running in sandboxed environments you also don't need to take care of installing a single package — all it needs is bash.
 - **Has a completely linear history** — every step of the agent just appends to the messages and that's it.
   So there's no difference between the trajectory and the messages that you pass on to the LM.
   Great for debugging & fine-tuning.
 - **Executes actions with `subprocess.run`** — every action is completely independent (as opposed to keeping a stateful shell session running).
-  This makes it trivial to execute the actions in sandboxes (literally just switch out `subprocess.run` with `docker exec`) and to
-  scale up effortlessly. Seriously, this is [a big deal](https://mini-swe-agent.com/latest/faq/#why-no-shell-session), trust me.
+  This makes it trivial to execute the actions in sandboxes (literally just switch out `subprocess.run` with `docker exec`) and to scale up effortlessly. Seriously, this is [a big deal](https://mini-swe-agent.com/latest/faq/#why-no-shell-session), trust me.
 
-This makes it perfect as a baseline system and for a system that puts the language model (rather than
-the agent scaffold) in the middle of our attention.
+This makes it perfect as a baseline system and for a system that puts the language model (rather than the agent scaffold) in the middle of our attention.
 You can see the result on the [SWE-bench (bash only)](https://www.swebench.com/) leaderboard, that evaluates the performance of different LMs with `mini`.
 
 </details>
@@ -178,13 +175,13 @@ mini  # run the CLI
 
 Read more in our [documentation](https://mini-swe-agent.com/latest/):
 
-* [Quick start guide](https://mini-swe-agent.com/latest/quickstart/)
-* [Using the `mini` CLI](https://mini-swe-agent.com/latest/usage/mini/)
-* [Global configuration](https://mini-swe-agent.com/latest/advanced/global_configuration/)
-* [Yaml configuration files](https://mini-swe-agent.com/latest/advanced/yaml_configuration/)
-* [Power up with the cookbook](https://mini-swe-agent.com/latest/advanced/cookbook/)
-* [FAQ](https://mini-swe-agent.com/latest/faq/)
-* [Contribute!](https://mini-swe-agent.com/latest/contributing/)
+- [Quick start guide](https://mini-swe-agent.com/latest/quickstart/)
+- [Using the `mini` CLI](https://mini-swe-agent.com/latest/usage/mini/)
+- [Global configuration](https://mini-swe-agent.com/latest/advanced/global_configuration/)
+- [Yaml configuration files](https://mini-swe-agent.com/latest/advanced/yaml_configuration/)
+- [Power up with the cookbook](https://mini-swe-agent.com/latest/advanced/cookbook/)
+- [FAQ](https://mini-swe-agent.com/latest/faq/)
+- [Contribute!](https://mini-swe-agent.com/latest/contributing/)
 
 ## Attribution
 

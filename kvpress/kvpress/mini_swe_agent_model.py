@@ -16,18 +16,54 @@ in a YAML config passed to `mini`:
 
     model_class: kvpress.mini_swe_agent_model.KVPressLocalModel
     model_name: unsloth/Llama-3.2-1B-Instruct
-    model_kwargs:
-      compression_ratio: 0.5
-      n_sink: 4
-      decoding_compression_interval: 4   # omit for prefill-only compression (KVPress default)
-      log_path: ./agent_run_log.jsonl
+    press_name: streaming_llm                # any key of PRESS_FACTORY
+    compression_ratio: 0.5                   # 0.0 = full attention
+    n_sink: 4
+    decoding_compression_interval: 4         # omit for prefill-only compression
+    log_path: ./agent_run_log.jsonl
 
-Each turn's (messages, completion) pair is appended to `log_path` as one JSON line.
-Those lines can be replayed directly through `evaluation/entropy_analysis.py`'s
-`run_regime`/`compute_metrics`: rebuild `prompt_ids` from `messages` the same way
-`build_prompt_ids` does, treat the logged `completion` as the reference sequence, and
-compare full attention vs. StreamingLLM the same way this project already does for
-static QA tasks -- except now over a live agent trajectory.
+It must be paired with the *text-based* agent config, because the analysis needs the
+assistant's completion as plain text:
+
+    mini -y -c mini_textbased.yaml \
+         -c model.model_class=kvpress.mini_swe_agent_model.KVPressLocalModel \
+         -c model.model_name=Qwen/Qwen2.5-0.5B-Instruct \
+         -c agent.step_limit=6 -t "..." -o run.traj.json
+
+Two operational notes. Cost is always 0.0 here, so mini's `cost_limit` can never fire --
+bound runs with `agent.step_limit` instead. And `mini` defaults to the interactive agent,
+so unattended runs need `-y`.
+
+Each turn is appended to `log_path` as one JSON line carrying the exact `messages`,
+`completion`, `completion_ids` and `prompt_length`. Replay either that file or the ordinary
+`.traj.json` through `evaluation/entropy_analysis.py --trajectory_path`, which turns each
+turn into one Task and runs the same full-vs-compressed analysis this project already runs
+for static QA -- except now over a live agent trajectory.
+
+Usage
+-----
+------------------------------------------------------------------------
+------------------------------------------------------------------------        
+from local
+MODEL=unsloth/Llama-3.1-8B-Instruct
+MODEL_TAG=llama31_8b
+PRESS=streaming_llm
+TASK=prime_task
+
+RUN=./results/agent_runs/$MODEL_TAG/$TASK
+mkdir -p "$RUN"
+
+MSWEA_SILENT_STARTUP=1 .venv/bin/mini -y \
+    -c mini_textbased.yaml \
+    -c model.model_class=kvpress.mini_swe_agent_model.KVPressLocalModel \
+    -c model.model_name=$MODEL \
+    -c model.compression_ratio=0.0 \
+    -c model.max_new_tokens=512 \
+    -c model.log_path="$RUN/agent_log.jsonl" \
+    -c agent.step_limit=30 \
+    -t "write a python file prime.py with a function is_prime(n)" \
+    -o "$RUN/agent.traj.json" \
+    2>&1 | tee "$RUN/agent_run.log"
 """
 
 import dataclasses
@@ -41,7 +77,37 @@ from typing import Any, Optional
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
 
-from kvpress import DecodingPress, PrefillDecodingPress, StreamingLLMPress
+from kvpress import (
+    AdaKVPress,
+    DecodingPress,
+    ExpectedAttentionPress,
+    KeyDiffPress,
+    KnormPress,
+    PrefillDecodingPress,
+    RandomPress,
+    SnapKVPress,
+    StreamingLLMPress,
+    TOVAPress,
+)
+
+# The presses vetted for this prefill + decode pattern, matching
+# evaluation/entropy_analysis.py's SUPPORTED_PRESSES so a live agent run and the replay
+# analysis of its trajectory can use the same policy. Constructors rather than shared
+# instances: a press is stateful, and _build_press runs once per turn.
+PRESS_FACTORY = {
+    "streaming_llm": StreamingLLMPress,
+    "random": RandomPress,
+    "snapkv": SnapKVPress,
+    "knorm": KnormPress,
+    "tova": TOVAPress,
+    "keydiff": KeyDiffPress,
+    "expected_attention": lambda **kw: AdaKVPress(ExpectedAttentionPress(**kw)),
+}
+
+# Presses that score from a window of decode-time hidden states rather than from keys alone;
+# they need that window kept in DecodingPress's buffer. Mirrors entropy_analysis.py's
+# HIDDEN_STATE_WINDOW_ATTRS.
+HIDDEN_STATE_WINDOW_ATTRS = {"snapkv": "window_size", "expected_attention": "n_sink"}
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +115,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class KVPressLocalModelConfig:
     model_name: str
+    press_name: str = "streaming_llm"
     compression_ratio: float = 0.0
     n_sink: int = 4
     decoding_compression_interval: Optional[int] = None
@@ -73,6 +140,22 @@ class KVPressLocalModelConfig:
     multimodal_regex: str = ""
     log_path: Optional[str] = None
     cost_per_call: float = 0.0
+
+
+def _press_instance(press_name: str, ratio: float, n_sink: int):
+    """A fresh press at `ratio`, with `n_sink` applied only where the press has it.
+
+    Mirrors entropy_analysis.py's `press_instance`, including resolving through a wrapper
+    (`expected_attention` is an AdaKVPress around the real scorer, which proxies
+    compression_ratio but not n_sink).
+    """
+    assert press_name in PRESS_FACTORY, f"press_name must be one of {sorted(PRESS_FACTORY)}, got {press_name!r}"
+    press = PRESS_FACTORY[press_name](compression_ratio=ratio)
+    scorer = getattr(press, "press", press)
+    if hasattr(scorer, "n_sink"):
+        scorer.n_sink = n_sink
+    return press
+
 
 
 class KVPressLocalModel:
@@ -116,27 +199,41 @@ class KVPressLocalModel:
             Path(self.config.log_path).parent.mkdir(parents=True, exist_ok=True)
 
     def _build_press(self, prompt_length: int):
-        """Mirrors evaluation/entropy_analysis.py's build_stream_press: ratio=0.0 always
-        disables eviction entirely, at both prefill and decode."""
+        """Mirrors evaluation/entropy_analysis.py's `build_comp_press`, so a live agent run
+        and the replay analysis of its trajectory evict on the same rule.
+
+        ratio=0.0 always disables eviction entirely, at both prefill and decode: otherwise
+        a decode-time target_size of prompt_length would still trim the cache once it grew
+        past the original prompt.
+        """
         ratio = self.config.compression_ratio
-        prefill_press = StreamingLLMPress(compression_ratio=ratio, n_sink=self.config.n_sink)
+        press_name, n_sink = self.config.press_name, self.config.n_sink
+        prefill_press = _press_instance(press_name, ratio, n_sink)
         if self.config.decoding_compression_interval is None or ratio == 0.0:
             return prefill_press
 
         target_size = self.config.decoding_target_size or max(
-            self.config.n_sink + 1, int(prompt_length * (1 - ratio))
+            getattr(prefill_press, "n_sink", 0) + 1, int(prompt_length * (1 - ratio))
         )
+        window_attr = HIDDEN_STATE_WINDOW_ATTRS.get(press_name)
+        window = getattr(getattr(prefill_press, "press", prefill_press), window_attr, 0) if window_attr else 0
+        if window and self.config.decoding_compression_interval <= window:
+            raise ValueError(
+                f"press_name {press_name} scores over a {window}-step hidden-state window, so "
+                f"decoding_compression_interval must exceed {window} (got "
+                f"{self.config.decoding_compression_interval})"
+            )
         decode_press = DecodingPress(
-            base_press=StreamingLLMPress(compression_ratio=0.0, n_sink=self.config.n_sink),
+            base_press=_press_instance(press_name, 0.0, n_sink),
             compression_interval=self.config.decoding_compression_interval,
             target_size=target_size,
-            hidden_states_buffer_size=0,
+            hidden_states_buffer_size=self.config.decoding_compression_interval if window else 0,
         )
         return PrefillDecodingPress(prefilling_press=prefill_press, decoding_press=decode_press)
 
     @torch.no_grad()
-    def _generate(self, messages: list[dict]) -> tuple[str, int, int, str]:
-        """Returns (completion_text, prompt_length, cache_seq_length_after_generation, finish_reason).
+    def _generate(self, messages: list[dict]) -> tuple[str, list[int], int, int, str]:
+        """Returns (completion_text, completion_ids, prompt_length, cache_seq_length, finish_reason).
 
         Sampling params mirror litellm's model_kwargs passthrough: with do_sample=False
         (default) the model decodes greedily and deterministically -- fine for measurement,
@@ -178,21 +275,32 @@ class KVPressLocalModel:
         last_is_eos = len(generated_ids) > 0 and eos_ids is not None and generated_ids[-1].item() in eos_ids
         finish_reason = "length" if (len(generated_ids) >= self.config.max_new_tokens and not last_is_eos) else "stop"
 
-        return completion_text, prompt_length, cache_seq_length, finish_reason
+        return completion_text, generated_ids.tolist(), prompt_length, cache_seq_length, finish_reason
 
     def _log_turn(
-        self, messages: list[dict], completion_text: str, prompt_length: int, cache_seq_length: int, finish_reason: str
+        self, messages: list[dict], completion_text: str, completion_ids: list[int],
+        prompt_length: int, cache_seq_length: int, finish_reason: str,
     ):
+        """Append one turn to `log_path` as JSON, for replay through entropy_analysis.py.
+
+        `completion_ids` is the point of this log over the ordinary `.traj.json`: it records
+        the exact tokens generated, so teacher-forcing scores those rather than a re-encode
+        of the decoded text. `prompt_length` lets a replay assert it rebuilt the same prompt
+        the agent actually ran on -- a mismatch means the chat template rendered differently
+        and every number downstream would describe a prompt that never existed.
+        """
         if not self.config.log_path:
             return
         record = {
             "turn": self._turn,
             "model_name": self.config.model_name,
+            "press_name": self.config.press_name,
             "compression_ratio": self.config.compression_ratio,
             "n_sink": self.config.n_sink,
             "decoding_compression_interval": self.config.decoding_compression_interval,
             "messages": messages,
             "completion": completion_text,
+            "completion_ids": completion_ids,
             "prompt_length": prompt_length,
             "cache_seq_length": cache_seq_length,
             "finish_reason": finish_reason,
@@ -207,8 +315,8 @@ class KVPressLocalModel:
         from minisweagent.models import GLOBAL_MODEL_STATS
         from minisweagent.models.utils.actions_text import parse_regex_actions
 
-        completion_text, prompt_length, cache_seq_length, finish_reason = self._generate(messages)
-        self._log_turn(messages, completion_text, prompt_length, cache_seq_length, finish_reason)
+        completion_text, completion_ids, prompt_length, cache_seq_length, finish_reason = self._generate(messages)
+        self._log_turn(messages, completion_text, completion_ids, prompt_length, cache_seq_length, finish_reason)
 
         GLOBAL_MODEL_STATS.add(self.config.cost_per_call)
         self._cost += self.config.cost_per_call
@@ -258,6 +366,7 @@ class KVPressLocalModel:
                 "config": {
                     "model": {
                         "model_name": self.config.model_name,
+                        "press_name": self.config.press_name,
                         "compression_ratio": self.config.compression_ratio,
                         "n_sink": self.config.n_sink,
                         "decoding_compression_interval": self.config.decoding_compression_interval,
